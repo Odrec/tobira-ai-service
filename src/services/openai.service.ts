@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import { config } from '../config';
-import { db } from './database.service';
 
 /**
  * Prompts optimized for educational video content
@@ -100,7 +99,7 @@ class OpenAIService {
    */
   async generateSummary(transcript: string, model?: string): Promise<GenerationResult> {
     const startTime = Date.now();
-    const useModel = model || await db.getDefaultModel() || this.defaultModel;
+    const useModel = model || this.defaultModel;
 
     // Validate transcript length
     if (transcript.length === 0) {
@@ -154,7 +153,7 @@ class OpenAIService {
     processingTime: number;
   }> {
     const startTime = Date.now();
-    const useModel = model || await db.getDefaultModel() || this.defaultModel;
+    const useModel = model || this.defaultModel;
 
     if (transcript.length === 0) {
       throw new Error('Transcript is empty');
