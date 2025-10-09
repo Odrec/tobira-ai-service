@@ -54,6 +54,13 @@ The service will automatically:
 - **OpenAI API Key** ([Get one here](https://platform.openai.com/api-keys))
 - **Tobira** running with AI database migrations applied
 
+## Documentation
+
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get started in 5 minutes
+- **[Phase 2 Features](docs/PHASE2-FEATURES.md)** - Advanced features documentation
+- **[Architecture](../../docs/ai-features-architecture.md)** - System design and architecture
+- **[Implementation Plan](../../docs/ai-features-implementation-plan.md)** - Development roadmap
+
 ## Quick Start
 
 ### 1. Install Dependencies
