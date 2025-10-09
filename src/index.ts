@@ -7,6 +7,8 @@ import { db } from './services/database.service';
 import { openai } from './services/openai.service';
 import cache, { CacheService } from './services/cache.service';
 import { monitoring } from './utils/monitoring';
+import { CaptionExtractorService } from './services/caption-extractor.service';
+import * as queueService from './services/queue.service';
 
 const app = express();
 
@@ -73,7 +75,6 @@ app.get('/health', async (req: Request, res: Response) => {
 app.get('/status', async (req: Request, res: Response) => {
   try {
     const featuresEnabled = await db.isFeatureEnabled();
-    const defaultModel = await db.getDefaultModel();
     const quizEnabled = await db.getConfig('quiz_enabled');
     
     res.json({
@@ -84,7 +85,7 @@ app.get('/status', async (req: Request, res: Response) => {
         captionExtraction: true,
       },
       config: {
-        defaultModel,
+        defaultModel: config.openai.defaultModel, // Read from .env, not database
         cacheTtl: config.performance.cacheTtlSeconds,
       },
       metrics: monitoring.getStats(),
@@ -442,7 +443,6 @@ app.post('/api/captions/extract/:eventId', async (req: Request, res: Response) =
     const eventId = req.params.eventId; // Keep as string for BigInt precision
     const { language = 'en' } = req.body;
 
-    const { CaptionExtractorService } = await import('./services/caption-extractor.service');
     const extractor = new CaptionExtractorService(db);
 
     const result = await extractor.extractForEvent(eventId, language);
@@ -476,7 +476,6 @@ app.post('/api/captions/extract-batch', async (req: Request, res: Response) => {
   try {
     const { limit = 10 } = req.body;
 
-    const { CaptionExtractorService } = await import('./services/caption-extractor.service');
     const extractor = new CaptionExtractorService(db);
 
     const results = await extractor.extractBatch(limit);
@@ -501,7 +500,6 @@ app.post('/api/captions/extract-batch', async (req: Request, res: Response) => {
 // Get caption extraction stats
 app.get('/api/captions/stats', async (req: Request, res: Response) => {
   try {
-    const { CaptionExtractorService } = await import('./services/caption-extractor.service');
     const extractor = new CaptionExtractorService(db);
 
     const stats = await extractor.getStats();
@@ -518,8 +516,7 @@ app.post('/api/queue/summary/:eventId', async (req: Request, res: Response) => {
     const eventId = req.params.eventId;
     const { language = 'en', forceRegenerate = false } = req.body;
 
-    const { enqueueSummaryGeneration } = await import('./services/queue.service');
-    const jobId = await enqueueSummaryGeneration(eventId, language, forceRegenerate);
+    const jobId = await queueService.enqueueSummaryGeneration(eventId, language, forceRegenerate);
 
     res.json({
       success: true,
@@ -543,8 +540,7 @@ app.post('/api/queue/quiz/:eventId', async (req: Request, res: Response) => {
     const eventId = req.params.eventId;
     const { language = 'en', forceRegenerate = false } = req.body;
 
-    const { enqueueQuizGeneration } = await import('./services/queue.service');
-    const jobId = await enqueueQuizGeneration(eventId, language, forceRegenerate);
+    const jobId = await queueService.enqueueQuizGeneration(eventId, language, forceRegenerate);
 
     res.json({
       success: true,
@@ -568,8 +564,7 @@ app.post('/api/queue/caption/:eventId', async (req: Request, res: Response) => {
     const eventId = parseInt(req.params.eventId, 10);
     const { language = 'en' } = req.body;
 
-    const { enqueueCaptionExtraction } = await import('./services/queue.service');
-    const jobId = await enqueueCaptionExtraction(eventId, language);
+    const jobId = await queueService.enqueueCaptionExtraction(eventId, language);
 
     res.json({
       success: true,
@@ -592,8 +587,7 @@ app.post('/api/queue/caption-batch', async (req: Request, res: Response) => {
   try {
     const { limit = 10 } = req.body;
 
-    const { enqueueBatchCaptionExtraction } = await import('./services/queue.service');
-    const jobId = await enqueueBatchCaptionExtraction(limit);
+    const jobId = await queueService.enqueueBatchCaptionExtraction(limit);
 
     res.json({
       success: true,
@@ -613,8 +607,7 @@ app.post('/api/queue/caption-batch', async (req: Request, res: Response) => {
 // Get queue statistics
 app.get('/api/queue/stats', async (req: Request, res: Response) => {
   try {
-    const { getQueueStats } = await import('./services/queue.service');
-    const stats = await getQueueStats();
+    const stats = await queueService.getQueueStats();
 
     res.json(stats);
   } catch (error: any) {
