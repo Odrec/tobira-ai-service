@@ -506,6 +506,14 @@ app.get('/api/captions/stats', async (req: Request, res: Response) => {
 
     res.json(stats);
   } catch (error: any) {
+    console.error('Caption stats error:', error);
+    res.status(500).json({
+      error: 'Failed to get caption stats',
+      message: error.message,
+    });
+  }
+});
+
 // ========================================
 // Queue Management Endpoints (Phase 2)
 // ========================================
@@ -614,14 +622,6 @@ app.get('/api/queue/stats', async (req: Request, res: Response) => {
     console.error('Queue stats error:', error);
     res.status(500).json({
       error: 'Failed to get queue statistics',
-      message: error.message,
-    });
-  }
-});
-
-    console.error('Caption stats error:', error);
-    res.status(500).json({
-      error: 'Failed to get caption stats',
       message: error.message,
     });
   }
