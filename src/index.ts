@@ -125,12 +125,8 @@ app.post('/api/transcripts/upload', async (req: Request, res: Response) => {
 // Get transcript
 app.get('/api/transcripts/:eventId', async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.eventId);
+    const eventId = req.params.eventId; // Keep as string to preserve BigInt precision
     const language = (req.query.language as string) || 'en';
-    
-    if (isNaN(eventId)) {
-      return res.status(400).json({ error: 'Invalid eventId' });
-    }
 
     // Check cache first
     const cacheKey = CacheService.transcriptKey(eventId, language);
@@ -174,13 +170,9 @@ app.get('/api/transcripts/:eventId', async (req: Request, res: Response) => {
 // Generate summary
 app.post('/api/summaries/generate/:eventId', async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.eventId);
+    const eventId = req.params.eventId; // Keep as string to preserve BigInt precision
     const language = req.body.language || 'en';
     const forceRegenerate = req.body.forceRegenerate === true;
-    
-    if (isNaN(eventId)) {
-      return res.status(400).json({ error: 'Invalid eventId' });
-    }
 
     // Check if features are enabled
     const enabled = await db.isFeatureEnabled();
@@ -254,12 +246,8 @@ app.post('/api/summaries/generate/:eventId', async (req: Request, res: Response)
 // Get summary
 app.get('/api/summaries/:eventId', async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.eventId);
+    const eventId = req.params.eventId; // Keep as string to preserve BigInt precision
     const language = (req.query.language as string) || 'en';
-    
-    if (isNaN(eventId)) {
-      return res.status(400).json({ error: 'Invalid eventId' });
-    }
 
     // Check cache first
     const cacheKey = CacheService.summaryKey(eventId, language);

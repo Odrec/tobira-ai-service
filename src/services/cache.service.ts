@@ -123,14 +123,14 @@ class CacheService {
   /**
    * Generate cache key for summary
    */
-  static summaryKey(eventId: number, language: string): string {
+  static summaryKey(eventId: number | string, language: string): string {
     return `summary:${eventId}:${language}`;
   }
 
   /**
    * Generate cache key for transcript
    */
-  static transcriptKey(eventId: number, language: string): string {
+  static transcriptKey(eventId: number | string, language: string): string {
     return `transcript:${eventId}:${language}`;
   }
 }

@@ -1,4 +1,4 @@
-import { Pool, QueryResult } from 'pg';
+import { Pool, QueryResult, QueryResultRow } from 'pg';
 import { config } from '../config';
 
 interface Transcript {
@@ -48,7 +48,7 @@ class DatabaseService {
   /**
    * Execute a query with optional parameters
    */
-  async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
     const start = Date.now();
     try {
       const res = await this.pool.query<T>(text, params);
@@ -68,10 +68,10 @@ class DatabaseService {
   /**
    * Get transcript for a video
    */
-  async getTranscript(eventId: number, language: string = 'en'): Promise<string | null> {
+  async getTranscript(eventId: number | string, language: string = 'en'): Promise<string | null> {
     const result = await this.query<Transcript>(
-      'SELECT content FROM video_transcripts WHERE event_id = $1 AND language = $2',
-      [eventId, language]
+      'SELECT content FROM video_transcripts WHERE event_id = $1::bigint AND language = $2',
+      [eventId.toString(), language]
     );
     return result.rows[0]?.content || null;
   }
@@ -80,30 +80,30 @@ class DatabaseService {
    * Save or update transcript for a video
    */
   async saveTranscript(
-    eventId: number,
+    eventId: number | string,
     content: string,
     language: string = 'en',
     source: string = 'manual_upload'
   ): Promise<void> {
     await this.query(
       `INSERT INTO video_transcripts (event_id, language, content, source)
-       VALUES ($1, $2, $3, $4)
+       VALUES ($1::bigint, $2, $3, $4)
        ON CONFLICT (event_id, language)
-       DO UPDATE SET 
-         content = EXCLUDED.content, 
+       DO UPDATE SET
+         content = EXCLUDED.content,
          source = EXCLUDED.source,
          updated_at = NOW()`,
-      [eventId, language, content, source]
+      [eventId.toString(), language, content, source]
     );
   }
 
   /**
    * Check if transcript exists for a video
    */
-  async hasTranscript(eventId: number, language: string = 'en'): Promise<boolean> {
+  async hasTranscript(eventId: number | string, language: string = 'en'): Promise<boolean> {
     const result = await this.query(
-      'SELECT EXISTS(SELECT 1 FROM video_transcripts WHERE event_id = $1 AND language = $2)',
-      [eventId, language]
+      'SELECT EXISTS(SELECT 1 FROM video_transcripts WHERE event_id = $1::bigint AND language = $2)',
+      [eventId.toString(), language]
     );
     return result.rows[0].exists;
   }
@@ -111,10 +111,10 @@ class DatabaseService {
   /**
    * Get summary for a video
    */
-  async getSummary(eventId: number, language: string = 'en'): Promise<Summary | null> {
+  async getSummary(eventId: number | string, language: string = 'en'): Promise<Summary | null> {
     const result = await this.query<Summary>(
-      'SELECT * FROM ai_summaries WHERE event_id = $1 AND language = $2',
-      [eventId, language]
+      'SELECT * FROM ai_summaries WHERE event_id = $1::bigint AND language = $2',
+      [eventId.toString(), language]
     );
     return result.rows[0] || null;
   }
@@ -123,7 +123,7 @@ class DatabaseService {
    * Save or update AI-generated summary
    */
   async saveSummary(
-    eventId: number,
+    eventId: number | string,
     summary: string,
     model: string,
     language: string = 'en',
@@ -131,24 +131,24 @@ class DatabaseService {
   ): Promise<void> {
     await this.query(
       `INSERT INTO ai_summaries (event_id, language, summary, model, processing_time_ms)
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1::bigint, $2, $3, $4, $5)
        ON CONFLICT (event_id, language)
-       DO UPDATE SET 
+       DO UPDATE SET
          summary = EXCLUDED.summary,
          model = EXCLUDED.model,
          processing_time_ms = EXCLUDED.processing_time_ms,
          updated_at = NOW()`,
-      [eventId, language, summary, model, processingTimeMs || null]
+      [eventId.toString(), language, summary, model, processingTimeMs || null]
     );
   }
 
   /**
    * Check if summary exists for a video
    */
-  async hasSummary(eventId: number, language: string = 'en'): Promise<boolean> {
+  async hasSummary(eventId: number | string, language: string = 'en'): Promise<boolean> {
     const result = await this.query(
-      'SELECT EXISTS(SELECT 1 FROM ai_summaries WHERE event_id = $1 AND language = $2)',
-      [eventId, language]
+      'SELECT EXISTS(SELECT 1 FROM ai_summaries WHERE event_id = $1::bigint AND language = $2)',
+      [eventId.toString(), language]
     );
     return result.rows[0].exists;
   }

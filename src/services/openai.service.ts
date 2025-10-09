@@ -126,8 +126,8 @@ class OpenAIService {
             content: prompt,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 600,
+        temperature: 1,
+        max_completion_tokens: 600,
       });
 
       const summary = response.choices[0].message.content?.trim() || '';
@@ -175,8 +175,8 @@ class OpenAIService {
             content: prompt,
           },
         ],
-        temperature: 0.8,
-        max_tokens: 2500,
+        temperature: 1,
+        max_completion_tokens: 2500,
       });
 
       const content = response.choices[0].message.content?.trim() || '{}';
