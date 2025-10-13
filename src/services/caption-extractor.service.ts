@@ -8,9 +8,6 @@ import { parseCaption, ParsedCaption } from '../utils/caption-parser';
 import db from './database.service';
 import { logger } from '../utils/monitoring';
 
-// Type import for DatabaseService
-type DatabaseService = typeof db;
-
 export interface CaptionSource {
     eventId: string | number;
     uri: string;
@@ -28,11 +25,9 @@ export interface ExtractionResult {
 
 export class CaptionExtractorService {
     private db: typeof db;
-    private baseUrl: string;
 
-    constructor(dbInstance: typeof db = db, opencastBaseUrl?: string) {
+    constructor(dbInstance: typeof db = db) {
         this.db = dbInstance;
-        this.baseUrl = opencastBaseUrl || process.env.OPENCAST_BASE_URL || '';
     }
 
     /**
@@ -71,8 +66,9 @@ export class CaptionExtractorService {
 
     /**
      * Get captions from event_texts table (already parsed by Tobira)
+     * Note: Does not filter by language - returns all captions for the event
      */
-    async getFromEventTexts(eventId: string | number, language: string = 'en'): Promise<string | null> {
+    async getFromEventTexts(eventId: string | number): Promise<string | null> {
         const query = `
             SELECT 
                 array_to_string(
@@ -129,7 +125,7 @@ export class CaptionExtractorService {
     async extractForEvent(eventId: string | number, language: string = 'en'): Promise<ExtractionResult> {
         try {
             // Strategy 1: Check if already in event_texts (parsed by Tobira)
-            const eventTextCaption = await this.getFromEventTexts(eventId, language);
+            const eventTextCaption = await this.getFromEventTexts(eventId);
             
             if (eventTextCaption && eventTextCaption.length > 100) {
                 // Save to video_transcripts
@@ -179,7 +175,7 @@ export class CaptionExtractorService {
                         success: true,
                         transcriptLength: parsed.fullText.length,
                         source: 'captions_array'
-                    };
+                    };language
                 }
             }
 
