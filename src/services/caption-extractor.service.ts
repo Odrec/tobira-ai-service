@@ -42,13 +42,14 @@ export class CaptionExtractorService {
         const query = `
             SELECT DISTINCT
                 e.id as event_id,
-                (unnest(e.captions)).uri as uri,
-                (unnest(e.captions)).lang as language
+                c.uri as uri,
+                c.lang as language
             FROM all_events e
-            LEFT JOIN video_transcripts vt 
-                ON vt.event_id = e.id 
-                AND vt.language = (unnest(e.captions)).lang
-            WHERE 
+            CROSS JOIN LATERAL unnest(e.captions) AS c
+            LEFT JOIN video_transcripts vt
+                ON vt.event_id = e.id
+                AND vt.language = c.lang
+            WHERE
                 array_length(e.captions, 1) > 0
                 AND vt.id IS NULL
             ORDER BY e.id
