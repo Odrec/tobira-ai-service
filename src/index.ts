@@ -521,6 +521,13 @@ app.get('/api/captions/stats', async (req: Request, res: Response) => {
 // Enqueue summary generation
 app.post('/api/queue/summary/:eventId', async (req: Request, res: Response) => {
   try {
+    if (!queueService.isQueueEnabled()) {
+      return res.status(503).json({
+        error: 'Queue system unavailable',
+        message: 'Redis is not connected. Please use direct endpoints instead.',
+      });
+    }
+
     const eventId = req.params.eventId;
     const { language = 'en', forceRegenerate = false } = req.body;
 
@@ -545,6 +552,13 @@ app.post('/api/queue/summary/:eventId', async (req: Request, res: Response) => {
 // Enqueue quiz generation
 app.post('/api/queue/quiz/:eventId', async (req: Request, res: Response) => {
   try {
+    if (!queueService.isQueueEnabled()) {
+      return res.status(503).json({
+        error: 'Queue system unavailable',
+        message: 'Redis is not connected. Please use direct endpoints instead.',
+      });
+    }
+
     const eventId = req.params.eventId;
     const { language = 'en', forceRegenerate = false } = req.body;
 
@@ -569,6 +583,13 @@ app.post('/api/queue/quiz/:eventId', async (req: Request, res: Response) => {
 // Enqueue caption extraction
 app.post('/api/queue/caption/:eventId', async (req: Request, res: Response) => {
   try {
+    if (!queueService.isQueueEnabled()) {
+      return res.status(503).json({
+        error: 'Queue system unavailable',
+        message: 'Redis is not connected. Please use direct endpoints instead.',
+      });
+    }
+
     const eventId = parseInt(req.params.eventId, 10);
     const { language = 'en' } = req.body;
 
@@ -593,6 +614,13 @@ app.post('/api/queue/caption/:eventId', async (req: Request, res: Response) => {
 // Enqueue batch caption extraction
 app.post('/api/queue/caption-batch', async (req: Request, res: Response) => {
   try {
+    if (!queueService.isQueueEnabled()) {
+      return res.status(503).json({
+        error: 'Queue system unavailable',
+        message: 'Redis is not connected. Please use direct endpoints instead.',
+      });
+    }
+
     const { limit = 10 } = req.body;
 
     const jobId = await queueService.enqueueBatchCaptionExtraction(limit);
@@ -682,6 +710,9 @@ async function start() {
       process.exit(1);
     }
 
+    // Initialize queue system (optional - will gracefully fail if Redis unavailable)
+    const queueOk = await queueService.initializeQueues();
+
     // Start listening
     app.listen(PORT, () => {
       console.log('\n=================================');
@@ -692,6 +723,7 @@ async function start() {
       console.log(`Database: Connected`);
       console.log(`OpenAI: ${config.openai.apiKey ? 'Configured' : 'Not configured'}`);
       console.log(`Default Model: ${config.openai.defaultModel}`);
+      console.log(`Queue System: ${queueOk ? 'Enabled (Redis connected)' : 'Disabled (Redis not available)'}`);
       console.log('=================================\n');
       console.log('Available endpoints:');
       console.log('  📊 Admin Dashboard:');
@@ -712,11 +744,13 @@ async function start() {
       console.log(`    POST http://localhost:${PORT}/api/captions/extract/:eventId`);
       console.log(`    POST http://localhost:${PORT}/api/captions/extract-batch`);
       console.log(`    GET  http://localhost:${PORT}/api/captions/stats`);
-      console.log('  Queue Management (Phase 2):');
-      console.log(`    POST http://localhost:${PORT}/api/queue/summary/:eventId`);
-      console.log(`    POST http://localhost:${PORT}/api/queue/quiz/:eventId`);
-      console.log(`    POST http://localhost:${PORT}/api/queue/caption/:eventId`);
-      console.log(`    GET  http://localhost:${PORT}/api/queue/stats`);
+      if (queueOk) {
+        console.log('  Queue Management (Phase 2):');
+        console.log(`    POST http://localhost:${PORT}/api/queue/summary/:eventId`);
+        console.log(`    POST http://localhost:${PORT}/api/queue/quiz/:eventId`);
+        console.log(`    POST http://localhost:${PORT}/api/queue/caption/:eventId`);
+        console.log(`    GET  http://localhost:${PORT}/api/queue/stats`);
+      }
       console.log('=================================\n');
     });
   } catch (error) {
@@ -728,12 +762,14 @@ async function start() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  await queueService.closeQueues();
   await db.close();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
+  await queueService.closeQueues();
   await db.close();
   process.exit(0);
 });
