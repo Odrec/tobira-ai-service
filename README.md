@@ -8,13 +8,19 @@ This is a **separate microservice** that connects to Tobira's PostgreSQL databas
 
 ### Features
 
+**Phase 1 (MVP) - Completed ✅**
 - ✅ **Automatic Video Summarization** - AI-generated summaries using GPT-5
 - ✅ **Transcript Management** - Extract and process video transcripts
 - ✅ **Response Caching** - Fast responses with intelligent caching
 - ✅ **Performance Monitoring** - Track API usage and response times
 - ✅ **Feature Flags** - Easy enable/disable without code changes
-- 🔜 **Automatic Caption Extraction** - Pull transcripts from Tobira's existing caption data (Phase 2)
-- 🔜 **Quiz Generation** - Interactive quizzes (Phase 2)
+
+**Phase 2 (Production Ready) - Completed ✅**
+- ✅ **Automatic Caption Extraction** - Pull transcripts from Tobira's existing caption data
+- ✅ **Quiz Generation** - Interactive quizzes from video content
+- ✅ **Queue System** - BullMQ-based async processing with Redis
+- ✅ **Batch Processing** - Process multiple videos efficiently
+- ✅ **Admin Dashboard** - Web-based monitoring and management UI
 
 ## Architecture
 
@@ -30,22 +36,22 @@ Tobira Backend (Rust) → PostgreSQL ← AI Service (Node.js/TypeScript)
 
 ## Transcript Workflow
 
-### MVP (Current - Testing Mode)
+### Manual Upload (Testing Mode)
 For quick testing, you can manually upload transcript text:
 ```bash
 curl -X POST http://localhost:3001/api/transcripts/upload \
   -d '{"eventId": 1, "content": "Transcript text..."}'
 ```
 
-### Production (Phase 2 - Automatic)
-The service will automatically:
-1. Query `events.captions` from Tobira database
-2. Fetch caption files (VTT/SRT) from URIs
-3. Extract plain text
-4. Store in `video_transcripts` table
-5. Generate summaries automatically
+### Automatic Extraction (Production Mode) ✅
+The service now automatically:
+1. Queries `events.captions` and `event_texts` from Tobira database
+2. Fetches caption files (VTT/SRT) from URIs
+3. Parses and extracts plain text using industry-standard parser
+4. Stores in `video_transcripts` table
+5. Generates summaries and quizzes via queue system
 
-**Note:** Manual upload is only for MVP testing. Production deployment will work with Tobira's existing caption data automatically.
+**Status:** Both manual upload and automatic extraction are fully operational. See [`docs/PHASE2-FEATURES.md`](docs/PHASE2-FEATURES.md) for usage examples.
 
 ## Prerequisites
 
@@ -56,10 +62,10 @@ The service will automatically:
 
 ## Documentation
 
-- **[Quick Start Guide](docs/QUICKSTART.md)** - Get started in 5 minutes
-- **[Phase 2 Features](docs/PHASE2-FEATURES.md)** - Advanced features documentation
-- **[Architecture](../../docs/ai-features-architecture.md)** - System design and architecture
-- **[Implementation Plan](../../docs/ai-features-implementation-plan.md)** - Development roadmap
+- **[Phase 2 Features](docs/PHASE2-FEATURES.md)** - Complete Phase 2 features documentation (caption extraction, quizzes, queue system, admin dashboard)
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get started in 5 minutes (if available)
+- **[Architecture](../../docs/ai-features-architecture.md)** - System design and architecture (if available)
+- **[Implementation Plan](../../docs/ai-features-implementation-plan.md)** - Development roadmap (if available)
 
 ## Quick Start
 
@@ -410,20 +416,23 @@ curl http://localhost:3001/api/admin/metrics
 - ⚠️ No authentication on API endpoints (add if exposing publicly)
 - ⚠️ CORS enabled for development (restrict in production)
 
-## Next Steps for Production
+## Next Steps (Phase 3)
 
+**Current Status:** Phase 2 complete with queue system, Redis, caption extraction, and admin dashboard all operational.
+
+**Recommended Next Steps:**
 1. **Add Authentication**: Protect API endpoints
-2. **Use Redis**: Replace in-memory cache
-3. **Add Queue System**: BullMQ for batch processing
-4. **Automatic Caption Extraction**: Pull from Tobira's `events.captions`
+2. **GraphQL API**: Create GraphQL layer for Tobira integration
+3. **Frontend Components**: React components for video portal
+4. **Automatic Transcription**: Integrate Whisper API for videos without captions
 5. **Error Tracking**: Integrate Sentry or similar
 6. **Comprehensive Tests**: Unit + integration tests
 7. **CI/CD Pipeline**: Automated deployment
-8. **Documentation**: API docs with examples
+8. **Vector Search**: Implement RAG for "chat with video" feature
 
 ## Roadmap
 
-### Phase 1 (Current - MVP) ✅
+### Phase 1 (MVP) - Completed ✅
 - [x] Database schema
 - [x] Basic transcript handling
 - [x] Summary generation with GPT-5
@@ -432,15 +441,17 @@ curl http://localhost:3001/api/admin/metrics
 - [x] Feature flags
 - [x] RESTful API
 
-### Phase 2 (Next - Production Ready)
-- [ ] Automatic caption extraction from Tobira events
-- [ ] VTT/SRT parser for caption files
-- [ ] Quiz generation
-- [ ] Queue system (BullMQ + Redis)
-- [ ] Batch processing for existing videos
-- [ ] Admin dashboard UI
+### Phase 2 (Production Ready) - Completed ✅ (2025-10-09)
+- [x] Automatic caption extraction from Tobira events
+- [x] VTT/SRT parser for caption files
+- [x] Quiz generation
+- [x] Queue system (BullMQ + Redis)
+- [x] Batch processing for existing videos
+- [x] Admin dashboard UI
 
-### Phase 3 (Future - Advanced Features)
+See [`docs/PHASE2-FEATURES.md`](docs/PHASE2-FEATURES.md) for detailed Phase 2 documentation and usage examples.
+
+### Phase 3 (Next - Advanced Features)
 - [ ] GraphQL API for Tobira integration
 - [ ] Frontend React components
 - [ ] Automatic transcription (Whisper API)
@@ -460,6 +471,6 @@ Same as Tobira - check main project for license details.
 
 ---
 
-**Note**: This is a prototype service for testing AI features. The production version will automatically work with Tobira's existing caption data without manual transcript upload.
+**Current Status (October 2025):** Phase 2 complete! The service now includes automatic caption extraction, quiz generation, queue-based processing, and an admin dashboard. Ready for production testing.
 
 **Built for the Tobira video portal community** 🚀
