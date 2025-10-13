@@ -656,6 +656,50 @@ app.get('/api/queue/stats', async (req: Request, res: Response) => {
 });
 
 
+// Admin: Get list of events/videos
+app.get('/api/admin/events', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT DISTINCT
+         e.id,
+         e.title,
+         e.created,
+         e.series,
+         COALESCE(
+           array_agg(DISTINCT c.lang) FILTER (WHERE c.lang IS NOT NULL),
+           '{}'
+         ) as caption_languages,
+         COALESCE(
+           array_agg(DISTINCT vt.language) FILTER (WHERE vt.language IS NOT NULL),
+           '{}'
+         ) as transcript_languages
+       FROM all_events e
+       LEFT JOIN LATERAL unnest(e.captions) AS c ON true
+       LEFT JOIN video_transcripts vt ON vt.event_id = e.id
+       WHERE e.state = 'ready'
+         AND (
+           array_length(e.captions, 1) > 0
+           OR vt.id IS NOT NULL
+         )
+       GROUP BY e.id, e.title, e.created, e.series
+       ORDER BY e.title`
+    );
+    
+    res.json({
+      events: result.rows.map((row: any) => ({
+        id: row.id.toString(),
+        title: row.title || `Event ${row.id}`,
+        created: row.created,
+        series: row.series,
+        captionLanguages: row.caption_languages || [],
+        transcriptLanguages: row.transcript_languages || []
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Admin: Get configuration
 app.get('/api/admin/config', async (req: Request, res: Response) => {
   try {

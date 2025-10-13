@@ -280,17 +280,20 @@
             <h2>Quick Actions</h2>
             
             <div class="form-group">
-                <label>Event ID:</label>
-                <input type="number" id="eventId" placeholder="Enter event ID" value="1">
+                <label>Search & Select Video:</label>
+                <input type="text" id="eventSearch" placeholder="Type to search videos..." style="width: 100%; max-width: 500px; margin-bottom: 10px;" oninput="filterVideos()">
+                <select id="eventId" size="8" style="width: 100%; max-width: 500px;">
+                    <option value="">Loading videos...</option>
+                </select>
+                <div id="videoCount" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
             </div>
 
             <div class="form-group">
                 <label>Language:</label>
                 <select id="language">
-                    <option value="en">English (en)</option>
-                    <option value="de">German (de)</option>
-                    <option value="fr">French (fr)</option>
+                    <option value="">Select a video first...</option>
                 </select>
+                <div id="languageInfo" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
             </div>
 
             <div class="button-group">
@@ -548,18 +551,32 @@
             }
         }
 
+        // Helper to get selected video title
+        function getSelectedVideoTitle() {
+            const select = document.getElementById('eventId');
+            const option = select.options[select.selectedIndex];
+            return option ? option.textContent : null;
+        }
+
+        // Helper to format event info
+        function formatEventInfo(eventId) {
+            const title = getSelectedVideoTitle();
+            return title ? `"${title}" (ID: ${eventId})` : `event ${eventId}`;
+        }
+
         // Action functions
         async function extractCaption() {
             const eventId = document.getElementById('eventId').value;
             const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
             
-            log(`Extracting caption for event ${eventId}...`, 'info');
+            log(`Extracting caption for ${eventInfo}...`, 'info');
             try {
                 const result = await postAPI(`/api/captions/extract/${eventId}`, { language });
                 if (result.success) {
-                    log(`Caption extracted successfully for event ${eventId}`, 'success');
+                    log(`✓ Caption extracted successfully for ${eventInfo}`, 'success');
                 } else {
-                    log(`Caption extraction failed: ${result.error}`, 'error');
+                    log(`✗ Caption extraction failed: ${result.error}`, 'error');
                 }
                 await loadCaptionStats();
             } catch (error) {
@@ -570,11 +587,12 @@
         async function generateSummary() {
             const eventId = document.getElementById('eventId').value;
             const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
             
-            log(`Generating summary for event ${eventId}...`, 'info');
+            log(`Generating summary for ${eventInfo}...`, 'info');
             try {
                 const result = await postAPI(`/api/summaries/generate/${eventId}`, { language });
-                log(`Summary generated successfully (${result.processingTime}ms)`, 'success');
+                log(`✓ Summary generated for ${eventInfo} (${result.processingTime}ms)`, 'success');
             } catch (error) {
                 // Error already logged
             }
@@ -583,11 +601,12 @@
         async function generateQuiz() {
             const eventId = document.getElementById('eventId').value;
             const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
             
-            log(`Generating quiz for event ${eventId}...`, 'info');
+            log(`Generating quiz for ${eventInfo}...`, 'info');
             try {
                 const result = await postAPI(`/api/quizzes/generate/${eventId}`, { language });
-                log(`Quiz generated with ${result.quiz.questions.length} questions`, 'success');
+                log(`✓ Quiz generated for ${eventInfo} with ${result.quiz.questions.length} questions`, 'success');
             } catch (error) {
                 // Error already logged
             }
@@ -596,11 +615,12 @@
         async function enqueueSummary() {
             const eventId = document.getElementById('eventId').value;
             const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
             
-            log(`Queueing summary generation for event ${eventId}...`, 'info');
+            log(`Queueing summary generation for ${eventInfo}...`, 'info');
             try {
                 const result = await postAPI(`/api/queue/summary/${eventId}`, { language });
-                log(`Summary job enqueued (Job ID: ${result.jobId})`, 'success');
+                log(`✓ Summary job queued for ${eventInfo} (Job ID: ${result.jobId})`, 'success');
                 await loadQueueStats();
             } catch (error) {
                 // Error already logged
@@ -645,9 +665,110 @@
             }, 5000); // Refresh every 5 seconds
         }
 
+        // Store all events for filtering
+        let allEvents = [];
+
+        // Load events for dropdown
+        async function loadEvents() {
+            try {
+                const data = await fetchAPI('/api/admin/events');
+                const select = document.getElementById('eventId');
+                
+                if (data.events && data.events.length > 0) {
+                    allEvents = data.events;
+                    renderEvents(allEvents);
+                    log(`Loaded ${data.events.length} videos with captions/transcripts`, 'info');
+                    document.getElementById('videoCount').textContent = `${data.events.length} videos available`;
+                    
+                    // Set up event listener for language updates
+                    select.addEventListener('change', updateLanguageOptions);
+                } else {
+                    select.innerHTML = '<option value="">No videos found</option>';
+                }
+            } catch (error) {
+                const select = document.getElementById('eventId');
+                select.innerHTML = '<option value="">Failed to load videos</option>';
+            }
+        }
+
+        // Update language dropdown based on selected video
+        function updateLanguageOptions() {
+            const select = document.getElementById('eventId');
+            const langSelect = document.getElementById('language');
+            const langInfo = document.getElementById('languageInfo');
+            const eventId = select.value;
+            
+            if (!eventId) {
+                langSelect.innerHTML = '<option value="">Select a video first...</option>';
+                langInfo.textContent = '';
+                return;
+            }
+            
+            const event = allEvents.find(e => e.id === eventId);
+            if (!event) return;
+            
+            const allLangs = new Set([...event.captionLanguages, ...event.transcriptLanguages]);
+            
+            if (allLangs.size === 0) {
+                langSelect.innerHTML = '<option value="en">English (en)</option>';
+                langInfo.textContent = 'No language info - using default';
+                return;
+            }
+            
+            langSelect.innerHTML = '';
+            Array.from(allLangs).sort().forEach(lang => {
+                const option = document.createElement('option');
+                option.value = lang;
+                const hasCaption = event.captionLanguages.includes(lang);
+                const hasTranscript = event.transcriptLanguages.includes(lang);
+                const status = hasTranscript ? '✓' : (hasCaption ? '○' : '');
+                option.textContent = `${lang.toUpperCase()} ${status}`;
+                langSelect.appendChild(option);
+            });
+            
+            langInfo.textContent = '✓ = has transcript, ○ = has caption only';
+        }
+
+        // Render events in dropdown
+        function renderEvents(events) {
+            const select = document.getElementById('eventId');
+            select.innerHTML = '';
+            
+            events.forEach(event => {
+                const option = document.createElement('option');
+                option.value = event.id;
+                option.textContent = `${event.title}`;
+                option.title = `ID: ${event.id}`; // Show ID on hover
+                select.appendChild(option);
+            });
+            
+            document.getElementById('videoCount').textContent = `Showing ${events.length} of ${allEvents.length} videos`;
+            
+            // Update language options for first video
+            if (events.length > 0) {
+                updateLanguageOptions();
+            }
+        }
+
+        // Filter videos based on search input
+        function filterVideos() {
+            const searchTerm = document.getElementById('eventSearch').value.toLowerCase();
+            if (!searchTerm) {
+                renderEvents(allEvents);
+                return;
+            }
+            
+            const filtered = allEvents.filter(event =>
+                event.title.toLowerCase().includes(searchTerm) ||
+                event.id.toString().includes(searchTerm)
+            );
+            renderEvents(filtered);
+        }
+
         // Initialize
         async function init() {
             log('Admin dashboard initialized', 'info');
+            await loadEvents();
             await Promise.all([
                 loadHealth(),
                 loadFeatures(),
