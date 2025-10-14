@@ -809,6 +809,185 @@ app.get('/api/admin/metrics', (req: Request, res: Response) => {
     cache: cache.getStats(),
   });
 });
+// ========================================
+// Delete Endpoints
+// ========================================
+
+// Delete transcript for specific video
+app.delete('/api/transcripts/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en-us)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
+    
+    const deleted = await db.deleteTranscript(eventId, language);
+    
+    if (!deleted) {
+      return res.status(404).json({
+        error: 'Transcript not found',
+        eventId,
+        language,
+      });
+    }
+
+    // Invalidate cache
+    await cache.invalidate(CacheService.transcriptKey(eventId, language));
+    
+    res.json({
+      success: true,
+      message: 'Transcript deleted successfully',
+      eventId,
+      language,
+    });
+  } catch (error: any) {
+    console.error('Delete transcript error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete summary for specific video
+app.delete('/api/summaries/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en-us)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
+    
+    const deleted = await db.deleteSummary(eventId, language);
+    
+    if (!deleted) {
+      return res.status(404).json({
+        error: 'Summary not found',
+        eventId,
+        language,
+      });
+    }
+
+    // Invalidate cache
+    await cache.invalidate(CacheService.summaryKey(eventId, language));
+    
+    res.json({
+      success: true,
+      message: 'Summary deleted successfully',
+      eventId,
+      language,
+    });
+  } catch (error: any) {
+    console.error('Delete summary error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete quiz for specific video
+app.delete('/api/quizzes/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en-us)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
+    
+    const deleted = await db.deleteQuiz(eventId, language);
+    
+    if (!deleted) {
+      return res.status(404).json({
+        error: 'Quiz not found',
+        eventId,
+        language,
+      });
+    }
+
+    // Invalidate cache
+    const cacheKey = `quiz:${eventId}:${language}`;
+    await cache.invalidate(cacheKey);
+    
+    res.json({
+      success: true,
+      message: 'Quiz deleted successfully',
+      eventId,
+      language,
+    });
+  } catch (error: any) {
+    console.error('Delete quiz error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete ALL transcripts
+app.delete('/api/admin/transcripts/all', async (req: Request, res: Response) => {
+  try {
+    const count = await db.deleteAllTranscripts();
+    
+    // Clear all transcript caches
+    await cache.clear();
+    
+    res.json({
+      success: true,
+      message: `Deleted ${count} transcript(s)`,
+      count,
+    });
+  } catch (error: any) {
+    console.error('Delete all transcripts error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete ALL summaries
+app.delete('/api/admin/summaries/all', async (req: Request, res: Response) => {
+  try {
+    const count = await db.deleteAllSummaries();
+    
+    // Clear all summary caches
+    await cache.clear();
+    
+    res.json({
+      success: true,
+      message: `Deleted ${count} summary/summaries`,
+      count,
+    });
+  } catch (error: any) {
+    console.error('Delete all summaries error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete ALL quizzes
+app.delete('/api/admin/quizzes/all', async (req: Request, res: Response) => {
+  try {
+    const count = await db.deleteAllQuizzes();
+    
+    // Clear all quiz caches
+    await cache.clear();
+    
+    res.json({
+      success: true,
+      message: `Deleted ${count} quiz(zes)`,
+      count,
+    });
+  } catch (error: any) {
+    console.error('Delete all quizzes error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // 404 handler
 app.use((req: Request, res: Response) => {

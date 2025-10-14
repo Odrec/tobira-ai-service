@@ -203,6 +203,66 @@ class DatabaseService {
   }
 
   /**
+   * Delete transcript for a specific video and language
+   */
+  async deleteTranscript(eventId: number | string, language: string): Promise<boolean> {
+    const normalizedLang = normalizeLanguageCode(language);
+    const result = await this.query(
+      'DELETE FROM video_transcripts WHERE event_id = $1::bigint AND language = $2',
+      [eventId.toString(), normalizedLang]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Delete summary for a specific video and language
+   */
+  async deleteSummary(eventId: number | string, language: string): Promise<boolean> {
+    const normalizedLang = normalizeLanguageCode(language);
+    const result = await this.query(
+      'DELETE FROM ai_summaries WHERE event_id = $1::bigint AND language = $2',
+      [eventId.toString(), normalizedLang]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Delete quiz for a specific video and language
+   */
+  async deleteQuiz(eventId: number | string, language: string): Promise<boolean> {
+    const normalizedLang = normalizeLanguageCode(language);
+    const result = await this.query(
+      'DELETE FROM ai_quizzes WHERE event_id = $1::bigint AND language = $2',
+      [eventId.toString(), normalizedLang]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Delete ALL transcripts from the database
+   */
+  async deleteAllTranscripts(): Promise<number> {
+    const result = await this.query('DELETE FROM video_transcripts');
+    return result.rowCount || 0;
+  }
+
+  /**
+   * Delete ALL summaries from the database
+   */
+  async deleteAllSummaries(): Promise<number> {
+    const result = await this.query('DELETE FROM ai_summaries');
+    return result.rowCount || 0;
+  }
+
+  /**
+   * Delete ALL quizzes from the database
+   */
+  async deleteAllQuizzes(): Promise<number> {
+    const result = await this.query('DELETE FROM ai_quizzes');
+    return result.rowCount || 0;
+  }
+
+  /**
    * Close database pool
    */
   async close(): Promise<void> {

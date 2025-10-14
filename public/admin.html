@@ -126,6 +126,22 @@
             cursor: not-allowed;
         }
 
+        .button-danger {
+            background: #e74c3c;
+        }
+
+        .button-danger:hover {
+            background: #c0392b;
+        }
+
+        .button-warning {
+            background: #f39c12;
+        }
+
+        .button-warning:hover {
+            background: #e67e22;
+        }
+
         .button-group {
             display: flex;
             flex-wrap: wrap;
@@ -306,6 +322,26 @@
                 <button onclick="enqueueSummary()">Queue Summary</button>
                 <button onclick="enqueueQuiz()">Queue Quiz</button>
                 <button onclick="batchExtractCaptions()">Batch Extract (10 events)</button>
+            </div>
+
+            <h3 style="margin-top: 30px; color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">Delete Operations</h3>
+            
+            <div style="margin-top: 15px;">
+                <strong>Delete from Selected Video:</strong>
+                <div class="button-group">
+                    <button class="button-warning" onclick="deleteTranscript()">Delete Transcript</button>
+                    <button class="button-warning" onclick="deleteSummary()">Delete Summary</button>
+                    <button class="button-warning" onclick="deleteQuiz()">Delete Quiz</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <strong style="color: #e74c3c;">⚠️ Danger Zone - Delete ALL Data:</strong>
+                <div class="button-group">
+                    <button class="button-danger" onclick="deleteAllTranscripts()">Delete ALL Transcripts</button>
+                    <button class="button-danger" onclick="deleteAllSummaries()">Delete ALL Summaries</button>
+                    <button class="button-danger" onclick="deleteAllQuizzes()">Delete ALL Quizzes</button>
+                </div>
             </div>
         </div>
 
@@ -649,6 +685,171 @@
                 await loadCaptionStats();
             } catch (error) {
                 // Error already logged
+            }
+        }
+
+        // Delete functions
+        async function deleteTranscript() {
+            const eventId = document.getElementById('eventId').value;
+            const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
+            
+            if (!confirm(`Are you sure you want to delete the transcript for ${eventInfo} (${language})?`)) {
+                return;
+            }
+            
+            log(`Deleting transcript for ${eventInfo}...`, 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/transcripts/${eventId}?language=${language}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message} for ${eventInfo}`, 'success');
+                await loadCaptionStats();
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteSummary() {
+            const eventId = document.getElementById('eventId').value;
+            const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
+            
+            if (!confirm(`Are you sure you want to delete the summary for ${eventInfo} (${language})?`)) {
+                return;
+            }
+            
+            log(`Deleting summary for ${eventInfo}...`, 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/summaries/${eventId}?language=${language}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message} for ${eventInfo}`, 'success');
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteQuiz() {
+            const eventId = document.getElementById('eventId').value;
+            const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
+            
+            if (!confirm(`Are you sure you want to delete the quiz for ${eventInfo} (${language})?`)) {
+                return;
+            }
+            
+            log(`Deleting quiz for ${eventInfo}...`, 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/quizzes/${eventId}?language=${language}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message} for ${eventInfo}`, 'success');
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteAllTranscripts() {
+            const confirmText = 'DELETE ALL TRANSCRIPTS';
+            const userInput = prompt(`⚠️ WARNING: This will delete ALL transcripts from the database!\n\nType "${confirmText}" to confirm:`);
+            
+            if (userInput !== confirmText) {
+                log('Delete all transcripts cancelled', 'info');
+                return;
+            }
+            
+            log('Deleting ALL transcripts...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/transcripts/all`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message}`, 'success');
+                await loadCaptionStats();
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteAllSummaries() {
+            const confirmText = 'DELETE ALL SUMMARIES';
+            const userInput = prompt(`⚠️ WARNING: This will delete ALL summaries from the database!\n\nType "${confirmText}" to confirm:`);
+            
+            if (userInput !== confirmText) {
+                log('Delete all summaries cancelled', 'info');
+                return;
+            }
+            
+            log('Deleting ALL summaries...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/summaries/all`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message}`, 'success');
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteAllQuizzes() {
+            const confirmText = 'DELETE ALL QUIZZES';
+            const userInput = prompt(`⚠️ WARNING: This will delete ALL quizzes from the database!\n\nType "${confirmText}" to confirm:`);
+            
+            if (userInput !== confirmText) {
+                log('Delete all quizzes cancelled', 'info');
+                return;
+            }
+            
+            log('Deleting ALL quizzes...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/quizzes/all`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message}`, 'success');
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
             }
         }
 
