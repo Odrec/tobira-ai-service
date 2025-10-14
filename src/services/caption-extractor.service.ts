@@ -7,6 +7,7 @@ import axios from 'axios';
 import { parseCaption, ParsedCaption } from '../utils/caption-parser';
 import db from './database.service';
 import { logger } from '../utils/monitoring';
+import { normalizeLanguageCode } from '../utils/language';
 
 export interface CaptionSource {
     eventId: string | number;
@@ -121,8 +122,10 @@ export class CaptionExtractorService {
 
     /**
      * Extract caption for a single event
+     * @param language - Required language code (e.g., "en-us", "de-de")
      */
-    async extractForEvent(eventId: string | number, language: string = 'en'): Promise<ExtractionResult> {
+    async extractForEvent(eventId: string | number, language: string): Promise<ExtractionResult> {
+        const normalizedLang = normalizeLanguageCode(language);
         try {
             // Strategy 1: Check if already in event_texts (parsed by Tobira)
             const eventTextCaption = await this.getFromEventTexts(eventId);
@@ -132,14 +135,14 @@ export class CaptionExtractorService {
                 await this.db.query(
                     `INSERT INTO video_transcripts (event_id, language, content, source)
                      VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (event_id, language) 
+                     ON CONFLICT (event_id, language)
                      DO UPDATE SET content = $3, source = $4, updated_at = NOW()`,
-                    [eventId, language, eventTextCaption, 'event_texts']
+                    [eventId, normalizedLang, eventTextCaption, 'event_texts']
                 );
 
                 return {
                     eventId,
-                    language,
+                    language: normalizedLang,
                     success: true,
                     transcriptLength: eventTextCaption.length,
                     source: 'event_texts'
@@ -164,14 +167,14 @@ export class CaptionExtractorService {
                     await this.db.query(
                         `INSERT INTO video_transcripts (event_id, language, content, source)
                          VALUES ($1, $2, $3, $4)
-                         ON CONFLICT (event_id, language) 
+                         ON CONFLICT (event_id, language)
                          DO UPDATE SET content = $3, source = $4, updated_at = NOW()`,
-                        [eventId, language, parsed.fullText, 'captions_array']
+                        [eventId, normalizedLang, parsed.fullText, 'captions_array']
                     );
 
                     return {
                         eventId,
-                        language,
+                        language: normalizedLang,
                         success: true,
                         transcriptLength: parsed.fullText.length,
                         source: 'captions_array'
@@ -181,7 +184,7 @@ export class CaptionExtractorService {
 
             return {
                 eventId,
-                language,
+                language: normalizedLang,
                 success: false,
                 error: 'No captions found',
                 source: 'captions_array'
@@ -191,7 +194,7 @@ export class CaptionExtractorService {
             logger.error(`Failed to extract caption for event ${eventId}:`, error);
             return {
                 eventId,
-                language,
+                language: normalizedLang,
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
                 source: 'captions_array'

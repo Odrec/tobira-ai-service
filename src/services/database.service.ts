@@ -1,5 +1,6 @@
 import { Pool, QueryResult, QueryResultRow } from 'pg';
 import { config } from '../config';
+import { normalizeLanguageCode } from '../utils/language';
 
 interface Transcript {
   id: number;
@@ -67,24 +68,28 @@ class DatabaseService {
 
   /**
    * Get transcript for a video
+   * @param language - Required language code (e.g., "en-us", "de-de")
    */
-  async getTranscript(eventId: number | string, language: string = 'en'): Promise<string | null> {
+  async getTranscript(eventId: number | string, language: string): Promise<string | null> {
+    const normalizedLang = normalizeLanguageCode(language);
     const result = await this.query<Transcript>(
       'SELECT content FROM video_transcripts WHERE event_id = $1::bigint AND language = $2',
-      [eventId.toString(), language]
+      [eventId.toString(), normalizedLang]
     );
     return result.rows[0]?.content || null;
   }
 
   /**
    * Save or update transcript for a video
+   * @param language - Required language code (e.g., "en-us", "de-de")
    */
   async saveTranscript(
     eventId: number | string,
     content: string,
-    language: string = 'en',
+    language: string,
     source: string = 'manual_upload'
   ): Promise<void> {
+    const normalizedLang = normalizeLanguageCode(language);
     await this.query(
       `INSERT INTO video_transcripts (event_id, language, content, source)
        VALUES ($1::bigint, $2, $3, $4)
@@ -93,42 +98,48 @@ class DatabaseService {
          content = EXCLUDED.content,
          source = EXCLUDED.source,
          updated_at = NOW()`,
-      [eventId.toString(), language, content, source]
+      [eventId.toString(), normalizedLang, content, source]
     );
   }
 
   /**
    * Check if transcript exists for a video
+   * @param language - Required language code (e.g., "en-us", "de-de")
    */
-  async hasTranscript(eventId: number | string, language: string = 'en'): Promise<boolean> {
+  async hasTranscript(eventId: number | string, language: string): Promise<boolean> {
+    const normalizedLang = normalizeLanguageCode(language);
     const result = await this.query(
       'SELECT EXISTS(SELECT 1 FROM video_transcripts WHERE event_id = $1::bigint AND language = $2)',
-      [eventId.toString(), language]
+      [eventId.toString(), normalizedLang]
     );
     return result.rows[0].exists;
   }
 
   /**
    * Get summary for a video
+   * @param language - Required language code (e.g., "en-us", "de-de")
    */
-  async getSummary(eventId: number | string, language: string = 'en'): Promise<Summary | null> {
+  async getSummary(eventId: number | string, language: string): Promise<Summary | null> {
+    const normalizedLang = normalizeLanguageCode(language);
     const result = await this.query<Summary>(
       'SELECT * FROM ai_summaries WHERE event_id = $1::bigint AND language = $2',
-      [eventId.toString(), language]
+      [eventId.toString(), normalizedLang]
     );
     return result.rows[0] || null;
   }
 
   /**
    * Save or update AI-generated summary
+   * @param language - Required language code (e.g., "en-us", "de-de")
    */
   async saveSummary(
     eventId: number | string,
     summary: string,
     model: string,
-    language: string = 'en',
+    language: string,
     processingTimeMs?: number
   ): Promise<void> {
+    const normalizedLang = normalizeLanguageCode(language);
     await this.query(
       `INSERT INTO ai_summaries (event_id, language, summary, model, processing_time_ms)
        VALUES ($1::bigint, $2, $3, $4, $5)
@@ -138,7 +149,7 @@ class DatabaseService {
          model = EXCLUDED.model,
          processing_time_ms = EXCLUDED.processing_time_ms,
          updated_at = NOW()`,
-      [eventId.toString(), language, summary, model, processingTimeMs || null]
+      [eventId.toString(), normalizedLang, summary, model, processingTimeMs || null]
     );
   }
 
@@ -146,9 +157,10 @@ class DatabaseService {
    * Check if summary exists for a video
    */
   async hasSummary(eventId: number | string, language: string = 'en'): Promise<boolean> {
+    const normalizedLang = normalizeLanguageCode(language);
     const result = await this.query(
       'SELECT EXISTS(SELECT 1 FROM ai_summaries WHERE event_id = $1::bigint AND language = $2)',
-      [eventId.toString(), language]
+      [eventId.toString(), normalizedLang]
     );
     return result.rows[0].exists;
   }

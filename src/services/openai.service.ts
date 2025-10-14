@@ -8,12 +8,15 @@ const SUMMARY_PROMPT = `You are an educational content summarizer specialized in
 
 Create a concise, informative summary of this video transcript.
 
+IMPORTANT: The summary MUST be in the SAME LANGUAGE as the transcript. If the transcript is in German, respond in German. If it's in English, respond in English, etc.
+
 Requirements:
 - Length: 200-400 words
 - Structure: Brief overview, 3-5 key points, brief conclusion
 - Tone: Educational, clear, and engaging
 - Focus: Main concepts, important insights, and actionable takeaways
 - Format: Use clear paragraphs, no bullet points unless listing specific items
+- Language: MUST match the transcript language exactly
 
 Transcript:
 {transcript}
@@ -21,6 +24,8 @@ Transcript:
 Summary:`;
 
 const QUIZ_PROMPT = `You are an educational quiz generator. Create an interactive quiz from this video transcript.
+
+IMPORTANT: ALL quiz content (questions, options, explanations) MUST be in the SAME LANGUAGE as the transcript. If the transcript is in German, the entire quiz must be in German. If it's in English, the quiz must be in English, etc.
 
 Requirements:
 - Generate 8-10 questions total
@@ -33,6 +38,7 @@ Requirements:
   - Brief explanation
   - Approximate timestamp in seconds (when the topic appears in the video)
 - Questions should test understanding, not just memorization
+- Language: MUST match the transcript language exactly
 
 Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 {

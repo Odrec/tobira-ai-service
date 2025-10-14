@@ -9,6 +9,7 @@ import cache, { CacheService } from './services/cache.service';
 import { monitoring } from './utils/monitoring';
 import { CaptionExtractorService } from './services/caption-extractor.service';
 import * as queueService from './services/queue.service';
+import { normalizeLanguageCode } from './utils/language';
 
 const app = express();
 
@@ -99,13 +100,22 @@ app.get('/status', async (req: Request, res: Response) => {
 // Upload transcript
 app.post('/api/transcripts/upload', async (req: Request, res: Response) => {
   try {
-    const { eventId, content, language = 'en', source = 'manual_upload' } = req.body;
+    const { eventId, content, source = 'manual_upload' } = req.body;
     
     if (!eventId || !content) {
-      return res.status(400).json({ 
-        error: 'Missing required fields: eventId and content' 
+      return res.status(400).json({
+        error: 'Missing required fields: eventId, content, and language'
       });
     }
+
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
 
     if (content.length > 50000) {
       return res.status(400).json({ 
@@ -135,7 +145,15 @@ app.post('/api/transcripts/upload', async (req: Request, res: Response) => {
 app.get('/api/transcripts/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId; // Keep as string to preserve BigInt precision
-    const language = (req.query.language as string) || 'en';
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en-us)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
 
     // Check cache first
     const cacheKey = CacheService.transcriptKey(eventId, language);
@@ -180,7 +198,15 @@ app.get('/api/transcripts/:eventId', async (req: Request, res: Response) => {
 app.post('/api/summaries/generate/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId; // Keep as string to preserve BigInt precision
-    const language = req.body.language || 'en';
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
     const forceRegenerate = req.body.forceRegenerate === true;
 
     // Check if features are enabled
@@ -256,7 +282,15 @@ app.post('/api/summaries/generate/:eventId', async (req: Request, res: Response)
 app.get('/api/summaries/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId; // Keep as string to preserve BigInt precision
-    const language = (req.query.language as string) || 'en';
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en-us)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
 
     // Check cache first
     const cacheKey = CacheService.summaryKey(eventId, language);
@@ -307,7 +341,16 @@ app.get('/api/summaries/:eventId', async (req: Request, res: Response) => {
 app.post('/api/quizzes/generate/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId;
-    const { language = 'en', forceRegenerate = false } = req.body;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
+    const forceRegenerate = req.body.forceRegenerate === true;
 
     // Check if quiz feature is enabled
     const quizEnabled = await db.getConfig('quiz_enabled');
@@ -384,7 +427,15 @@ app.post('/api/quizzes/generate/:eventId', async (req: Request, res: Response) =
 app.get('/api/quizzes/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId;
-    const language = (req.query.language as string) || 'en';
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en-us)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
 
     // Check cache first
     const cacheKey = `quiz:${eventId}:${language}`;
@@ -441,7 +492,15 @@ app.get('/api/quizzes/:eventId', async (req: Request, res: Response) => {
 app.post('/api/captions/extract/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId; // Keep as string for BigInt precision
-    const { language = 'en' } = req.body;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
 
     const extractor = new CaptionExtractorService(db);
 
@@ -529,7 +588,16 @@ app.post('/api/queue/summary/:eventId', async (req: Request, res: Response) => {
     }
 
     const eventId = req.params.eventId;
-    const { language = 'en', forceRegenerate = false } = req.body;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
+    const forceRegenerate = req.body.forceRegenerate === true;
 
     const jobId = await queueService.enqueueSummaryGeneration(eventId, language, forceRegenerate);
 
@@ -560,7 +628,16 @@ app.post('/api/queue/quiz/:eventId', async (req: Request, res: Response) => {
     }
 
     const eventId = req.params.eventId;
-    const { language = 'en', forceRegenerate = false } = req.body;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
+    const forceRegenerate = req.body.forceRegenerate === true;
 
     const jobId = await queueService.enqueueQuizGeneration(eventId, language, forceRegenerate);
 
@@ -591,7 +668,15 @@ app.post('/api/queue/caption/:eventId', async (req: Request, res: Response) => {
     }
 
     const eventId = parseInt(req.params.eventId, 10);
-    const { language = 'en' } = req.body;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en-us", "de-de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
 
     const jobId = await queueService.enqueueCaptionExtraction(eventId, language);
 
