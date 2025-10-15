@@ -600,6 +600,19 @@
             return title ? `"${title}" (ID: ${eventId})` : `event ${eventId}`;
         }
 
+        // Helper to refresh video data after changes
+        async function refreshVideoData(eventId) {
+            // Reload the events list to get updated language info
+            await loadEvents();
+            
+            // Re-select the same video
+            const select = document.getElementById('eventId');
+            select.value = eventId;
+            
+            // Trigger language options update
+            updateLanguageOptions();
+        }
+
         // Action functions
         async function extractCaption() {
             const eventId = document.getElementById('eventId').value;
@@ -611,10 +624,11 @@
                 const result = await postAPI(`/api/captions/extract/${eventId}`, { language });
                 if (result.success) {
                     log(`✓ Caption extracted successfully for ${eventInfo}`, 'success');
+                    await loadCaptionStats();
+                    await refreshVideoData(eventId);
                 } else {
                     log(`✗ Caption extraction failed: ${result.error}`, 'error');
                 }
-                await loadCaptionStats();
             } catch (error) {
                 // Error already logged
             }
@@ -629,6 +643,7 @@
             try {
                 const result = await postAPI(`/api/summaries/generate/${eventId}`, { language });
                 log(`✓ Summary generated for ${eventInfo} (${result.processingTime}ms)`, 'success');
+                await refreshVideoData(eventId);
             } catch (error) {
                 // Error already logged
             }
@@ -643,6 +658,7 @@
             try {
                 const result = await postAPI(`/api/quizzes/generate/${eventId}`, { language });
                 log(`✓ Quiz generated for ${eventInfo} with ${result.quiz.questions.length} questions`, 'success');
+                await refreshVideoData(eventId);
             } catch (error) {
                 // Error already logged
             }
@@ -878,7 +894,7 @@
                 if (data.events && data.events.length > 0) {
                     allEvents = data.events;
                     renderEvents(allEvents);
-                    log(`Loaded ${data.events.length} videos with captions/transcripts`, 'info');
+                    log(`Loaded ${data.events.length} videos with generated content`, 'info');
                     document.getElementById('videoCount').textContent = `${data.events.length} videos available`;
                     
                     // Set up event listener for language updates
@@ -908,7 +924,13 @@
             const event = allEvents.find(e => e.id === eventId);
             if (!event) return;
             
-            const allLangs = new Set([...event.captionLanguages, ...event.transcriptLanguages]);
+            // Combine all language codes from all sources
+            const allLangs = new Set([
+                ...event.captionLanguages,
+                ...event.transcriptLanguages,
+                ...event.summaryLanguages,
+                ...event.quizLanguages
+            ]);
             
             if (allLangs.size === 0) {
                 langSelect.innerHTML = '<option value="en">English (en)</option>';
@@ -920,14 +942,26 @@
             Array.from(allLangs).sort().forEach(lang => {
                 const option = document.createElement('option');
                 option.value = lang;
+                
+                // Build status indicators
                 const hasCaption = event.captionLanguages.includes(lang);
                 const hasTranscript = event.transcriptLanguages.includes(lang);
-                const status = hasTranscript ? '✓' : (hasCaption ? '○' : '');
-                option.textContent = `${lang.toUpperCase()} ${status}`;
+                const hasSummary = event.summaryLanguages.includes(lang);
+                const hasQuiz = event.quizLanguages.includes(lang);
+                
+                // Build status string: T=Transcript, S=Summary, Q=Quiz
+                const statuses = [];
+                if (hasTranscript) statuses.push('T');
+                else if (hasCaption) statuses.push('C');
+                if (hasSummary) statuses.push('S');
+                if (hasQuiz) statuses.push('Q');
+                
+                const statusStr = statuses.length > 0 ? ` [${statuses.join('')}]` : '';
+                option.textContent = `${lang.toUpperCase()}${statusStr}`;
                 langSelect.appendChild(option);
             });
             
-            langInfo.textContent = '✓ = has transcript, ○ = has caption only';
+            langInfo.innerHTML = '<strong>Status:</strong> T=Transcript, C=Caption, S=Summary, Q=Quiz';
         }
 
         // Render events in dropdown

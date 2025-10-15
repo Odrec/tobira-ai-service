@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS ai_summaries (
     UNIQUE(event_id, language)
 );
 
+-- AI-generated quizzes table
+CREATE TABLE IF NOT EXISTS ai_quizzes (
+    id SERIAL PRIMARY KEY,
+    event_id INTEGER NOT NULL,
+    language VARCHAR(10) NOT NULL DEFAULT 'en',
+    quiz_data JSONB NOT NULL,
+    model VARCHAR(50) NOT NULL,
+    processing_time_ms INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(event_id, language)
+);
+
 -- Insert default configuration
 INSERT INTO ai_config (key, value, description) VALUES
     ('features_enabled', 'true', 'Master switch for AI features')
@@ -50,8 +63,10 @@ ON CONFLICT (key) DO NOTHING;
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_transcripts_event_lang ON video_transcripts(event_id, language);
 CREATE INDEX IF NOT EXISTS idx_summaries_event_lang ON ai_summaries(event_id, language);
+CREATE INDEX IF NOT EXISTS idx_quizzes_event_lang ON ai_quizzes(event_id, language);
 CREATE INDEX IF NOT EXISTS idx_transcripts_created ON video_transcripts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_summaries_created ON ai_summaries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quizzes_created ON ai_quizzes(created_at DESC);
 
 -- Display success message
 SELECT 'AI Service database schema created successfully!' AS status;
