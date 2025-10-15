@@ -67,28 +67,29 @@ export class CaptionExtractorService {
 
     /**
      * Get captions from event_texts table (already parsed by Tobira)
-     * Note: Does not filter by language - returns all captions for the event
+     * Filters by language to get the correct caption text
      */
-    async getFromEventTexts(eventId: string | number): Promise<string | null> {
+    async getFromEventTexts(eventId: string | number, language: string): Promise<string | null> {
         const query = `
-            SELECT 
+            SELECT
                 array_to_string(
-                    array_agg((unnest(texts)).t ORDER BY (unnest(texts)).span_start),
+                    array_agg(t.t ORDER BY t.span_start),
                     ' '
                 ) as full_text
             FROM event_texts
-            WHERE event_id = $1 AND ty = 'caption'
+            CROSS JOIN LATERAL unnest(texts) AS t
+            WHERE event_id = $1 AND ty = 'caption' AND lang = $2
             GROUP BY event_id
         `;
 
         try {
-            const result = await this.db.query(query, [eventId]);
+            const result = await this.db.query(query, [eventId, language]);
             if (result.rows.length > 0 && result.rows[0].full_text) {
                 return result.rows[0].full_text;
             }
             return null;
         } catch (error) {
-            logger.error(`Failed to get event_texts for event ${eventId}:`, error);
+            logger.error(`Failed to get event_texts for event ${eventId} in language ${language}:`, error);
             return null;
         }
     }
@@ -128,7 +129,7 @@ export class CaptionExtractorService {
         const normalizedLang = normalizeLanguageCode(language);
         try {
             // Strategy 1: Check if already in event_texts (parsed by Tobira)
-            const eventTextCaption = await this.getFromEventTexts(eventId);
+            const eventTextCaption = await this.getFromEventTexts(eventId, normalizedLang);
             
             if (eventTextCaption && eventTextCaption.length > 100) {
                 // Save to video_transcripts
@@ -149,15 +150,16 @@ export class CaptionExtractorService {
                 };
             }
 
-            // Strategy 2: Fetch from captions array
+            // Strategy 2: Fetch from captions array (filtered by language)
             const captionQuery = `
-                SELECT (unnest(captions)).uri as uri
-                FROM all_events
-                WHERE id = $1
+                SELECT c.uri as uri, c.lang as language
+                FROM all_events e
+                CROSS JOIN LATERAL unnest(e.captions) AS c
+                WHERE e.id = $1 AND c.lang = $2
                 LIMIT 1
             `;
             
-            const captionResult = await this.db.query(captionQuery, [eventId]);
+            const captionResult = await this.db.query(captionQuery, [eventId, normalizedLang]);
             
             if (captionResult.rows.length > 0) {
                 const uri = captionResult.rows[0].uri;
