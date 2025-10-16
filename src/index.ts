@@ -1169,6 +1169,135 @@ app.delete('/api/admin/quizzes/all', async (req: Request, res: Response) => {
   }
 });
 
+// ========================================
+// Flagged Content Endpoints
+// ========================================
+
+// Get all flagged content
+app.get('/api/admin/flags', async (req: Request, res: Response) => {
+  try {
+    const status = req.query.status as string || 'pending';
+    
+    const result = await db.query(
+      `SELECT 
+        f.id,
+        f.content_type,
+        f.content_id,
+        f.event_id,
+        f.username,
+        f.reason,
+        f.status,
+        f.admin_notes,
+        f.resolved_by,
+        f.resolved_at,
+        f.created_at,
+        e.title as event_title,
+        CASE 
+          WHEN f.content_type = 'summary' THEN s.language
+          WHEN f.content_type = 'quiz' THEN q.language
+        END as language,
+        CASE 
+          WHEN f.content_type = 'summary' THEN s.summary
+          WHEN f.content_type = 'quiz' THEN q.quiz_data::text
+        END as content_preview
+      FROM ai_content_flags f
+      LEFT JOIN all_events e ON f.event_id = e.id
+      LEFT JOIN ai_summaries s ON f.content_type = 'summary' AND f.content_id = s.id
+      LEFT JOIN ai_quizzes q ON f.content_type = 'quiz' AND f.content_id = q.id
+      WHERE f.status = $1
+      ORDER BY f.created_at DESC`,
+      [status]
+    );
+
+    res.json({
+      flags: result.rows.map(row => ({
+        id: row.id,
+        contentType: row.content_type,
+        contentId: row.content_id,
+        eventId: row.event_id,
+        eventTitle: row.event_title,
+        language: row.language,
+        username: row.username,
+        reason: row.reason,
+        status: row.status,
+        adminNotes: row.admin_notes,
+        resolvedBy: row.resolved_by,
+        resolvedAt: row.resolved_at,
+        createdAt: row.created_at,
+        contentPreview: row.content_preview ? row.content_preview.substring(0, 200) : null,
+      })),
+      total: result.rows.length,
+    });
+  } catch (error: any) {
+    console.error('Get flags error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update flag status (resolve/dismiss)
+app.put('/api/admin/flags/:id', async (req: Request, res: Response) => {
+  try {
+    const flagId = req.params.id;
+    const { status, adminNotes, resolvedBy } = req.body;
+
+    if (!status || !['resolved', 'dismissed', 'pending'].includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        message: 'Status must be one of: resolved, dismissed, pending'
+      });
+    }
+
+    const resolvedAt = (status === 'resolved' || status === 'dismissed') ? new Date() : null;
+
+    await db.query(
+      `UPDATE ai_content_flags 
+       SET status = $1, admin_notes = $2, resolved_by = $3, resolved_at = $4
+       WHERE id = $5`,
+      [status, adminNotes || null, resolvedBy || 'admin', resolvedAt, flagId]
+    );
+
+    res.json({
+      success: true,
+      message: `Flag ${status} successfully`,
+      flagId,
+      status,
+    });
+  } catch (error: any) {
+    console.error('Update flag error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get flag count by status
+app.get('/api/admin/flags/stats', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT 
+        status,
+        COUNT(*) as count
+      FROM ai_content_flags
+      GROUP BY status`
+    );
+
+    const stats = {
+      pending: 0,
+      resolved: 0,
+      dismissed: 0,
+      total: 0,
+    };
+
+    result.rows.forEach(row => {
+      stats[row.status as keyof typeof stats] = parseInt(row.count);
+      stats.total += parseInt(row.count);
+    });
+
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Get flag stats error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // 404 handler
 app.use((req: Request, res: Response) => {

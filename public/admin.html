@@ -276,6 +276,101 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
+
+        .flag-item {
+            background: #fff9e6;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        .flag-item.resolved {
+            background: #e8fde8;
+            border-left-color: #27ae60;
+        }
+
+        .flag-item.dismissed {
+            background: #f5f5f5;
+            border-left-color: #95a5a6;
+        }
+
+        .flag-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .flag-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .flag-badge-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .flag-badge-resolved {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .flag-badge-dismissed {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .flag-meta {
+            font-size: 12px;
+            color: #666;
+            margin: 5px 0;
+        }
+
+        .flag-reason {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-style: italic;
+        }
+
+        .flag-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .flag-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .flag-stat {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .flag-stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .flag-stat-label {
+            font-size: 12px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -422,6 +517,35 @@
                     <button onclick="saveContent()">Save Changes</button>
                     <button onclick="approveContent()" class="button-success" style="background: #27ae60;">Approve & Mark Approved</button>
                     <button onclick="loadContentForReview()">Reload</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Flagged Content -->
+        <div class="card">
+            <h2>🚩 Flagged Content</h2>
+            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                Review user-flagged AI content that needs attention
+            </p>
+            
+            <div class="form-group">
+                <label>Filter by Status:</label>
+                <select id="flagStatus" onchange="loadFlaggedContent()">
+                    <option value="pending">Pending Review</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="dismissed">Dismissed</option>
+                </select>
+            </div>
+
+            <div id="flaggedContentStats" style="margin-bottom: 15px;">
+                <div class="loading">
+                    <div class="spinner"></div> Loading...
+                </div>
+            </div>
+
+            <div id="flaggedContentList" style="margin-top: 20px;">
+                <div class="loading">
+                    <div class="spinner"></div> Loading...
                 </div>
             </div>
         </div>
@@ -974,12 +1098,16 @@
             
             try {
                 log(`Loading ${contentType} for ${eventInfo}...`, 'info');
-                const endpoint = contentType === 'summary' 
+                const endpoint = contentType === 'summary'
                     ? `/api/summaries/${eventId}?language=${language}`
                     : `/api/quizzes/${eventId}?language=${language}`;
                 
                 const data = await fetchAPI(endpoint);
                 currentContent = data;
+                
+                // Check for flags
+                const flagInfo = await checkContentFlags(eventId, language, contentType);
+                data.flagInfo = flagInfo;
                 
                 document.getElementById('reviewContent').style.display = 'block';
                 
@@ -997,8 +1125,36 @@
             }
         }
 
+        async function checkContentFlags(eventId, language, contentType) {
+            try {
+                const response = await fetchAPI('/api/admin/flags?status=pending');
+                const flags = response.flags.filter(f =>
+                    f.eventId == eventId &&
+                    f.language === language &&
+                    f.contentType === contentType
+                );
+                return flags.length > 0 ? flags : null;
+            } catch (error) {
+                return null;
+            }
+        }
+
         function renderSummaryEditor(data) {
+            const flagWarning = data.flagInfo ? `
+                <div style="background: #fff3cd; border-left: 4px solid #f39c12; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                    <strong style="color: #856404;">🚩 This content has been flagged by users (${data.flagInfo.length} flag(s))</strong>
+                    ${data.flagInfo.map(flag => `
+                        <div style="margin-top: 8px; font-size: 13px;">
+                            <div><strong>User:</strong> ${flag.username || 'Anonymous'}</div>
+                            ${flag.reason ? `<div><strong>Reason:</strong> "${flag.reason}"</div>` : ''}
+                            <div style="font-size: 12px; color: #666;">Flagged: ${new Date(flag.createdAt).toLocaleString()}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '';
+            
             const html = `
+                ${flagWarning}
                 <div style="margin-bottom: 15px;">
                     <strong>Summary for Event ${data.eventId} (${data.language})</strong>
                     ${data.approved ? '<span class="review-badge approval-badge-approved">✓ APPROVED</span>' : '<span class="review-badge review-badge-pending">⚠ NOT APPROVED</span>'}
@@ -1019,7 +1175,22 @@
 
         function renderQuizEditor(data) {
             const questions = data.quiz.questions || [];
+            
+            const flagWarning = data.flagInfo ? `
+                <div style="background: #fff3cd; border-left: 4px solid #f39c12; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                    <strong style="color: #856404;">🚩 This content has been flagged by users (${data.flagInfo.length} flag(s))</strong>
+                    ${data.flagInfo.map(flag => `
+                        <div style="margin-top: 8px; font-size: 13px;">
+                            <div><strong>User:</strong> ${flag.username || 'Anonymous'}</div>
+                            ${flag.reason ? `<div><strong>Reason:</strong> "${flag.reason}"</div>` : ''}
+                            <div style="font-size: 12px; color: #666;">Flagged: ${new Date(flag.createdAt).toLocaleString()}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '';
+            
             let html = `
+                ${flagWarning}
                 <div style="margin-bottom: 15px;">
                     <strong>Quiz for Event ${data.eventId} (${data.language})</strong>
                     ${data.approved ? '<span class="review-badge approval-badge-approved">✓ APPROVED</span>' : '<span class="review-badge review-badge-pending">⚠ NOT APPROVED</span>'}
@@ -1314,6 +1485,152 @@
             renderEvents(filtered);
         }
 
+        // Flagged Content Functions
+        async function loadFlagStats() {
+            try {
+                const data = await fetchAPI('/api/admin/flags/stats');
+                const html = `
+                    <div class="flag-stats">
+                        <div class="flag-stat">
+                            <div class="flag-stat-value">${data.pending}</div>
+                            <div class="flag-stat-label">Pending</div>
+                        </div>
+                        <div class="flag-stat">
+                            <div class="flag-stat-value">${data.resolved}</div>
+                            <div class="flag-stat-label">Resolved</div>
+                        </div>
+                        <div class="flag-stat">
+                            <div class="flag-stat-value">${data.dismissed}</div>
+                            <div class="flag-stat-label">Dismissed</div>
+                        </div>
+                        <div class="flag-stat">
+                            <div class="flag-stat-value">${data.total}</div>
+                            <div class="flag-stat-label">Total</div>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('flaggedContentStats').innerHTML = html;
+            } catch (error) {
+                document.getElementById('flaggedContentStats').innerHTML = '<p style="color: #e74c3c;">Failed to load stats</p>';
+            }
+        }
+
+        async function loadFlaggedContent() {
+            const status = document.getElementById('flagStatus').value;
+            const listDiv = document.getElementById('flaggedContentList');
+            
+            listDiv.innerHTML = '<div class="loading"><div class="spinner"></div> Loading...</div>';
+            
+            try {
+                const data = await fetchAPI(`/api/admin/flags?status=${status}`);
+                
+                if (data.flags.length === 0) {
+                    listDiv.innerHTML = `<p style="color: #666; text-align: center; padding: 20px;">No ${status} flags found</p>`;
+                    return;
+                }
+                
+                let html = '';
+                data.flags.forEach(flag => {
+                    const flagDate = new Date(flag.createdAt).toLocaleString();
+                    const resolvedInfo = flag.resolvedAt 
+                        ? `<div class="flag-meta">Resolved by ${flag.resolvedBy} on ${new Date(flag.resolvedAt).toLocaleString()}</div>`
+                        : '';
+                    
+                    html += `
+                        <div class="flag-item ${flag.status}">
+                            <div class="flag-header">
+                                <div>
+                                    <span class="flag-badge flag-badge-${flag.status}">${flag.status}</span>
+                                    <strong>${flag.eventTitle || 'Event ' + flag.eventId}</strong>
+                                    <span style="color: #666; font-weight: normal;">(${flag.contentType})</span>
+                                </div>
+                            </div>
+                            
+                            <div class="flag-meta">
+                                Flagged by <strong>${flag.username || 'Anonymous'}</strong> on ${flagDate}
+                                ${flag.language ? ` | Language: ${flag.language}` : ''}
+                            </div>
+                            
+                            ${flag.reason ? `<div class="flag-reason">"${flag.reason}"</div>` : ''}
+                            
+                            ${flag.adminNotes ? `<div class="flag-meta"><strong>Admin Notes:</strong> ${flag.adminNotes}</div>` : ''}
+                            ${resolvedInfo}
+                            
+                            ${status === 'pending' ? `
+                                <div class="flag-actions">
+                                    <button onclick="viewFlaggedContent('${flag.eventId}', '${flag.language}', '${flag.contentType}')" class="button-success" style="font-size: 12px;">
+                                        View Content
+                                    </button>
+                                    <button onclick="resolveFlagPrompt(${flag.id})" class="button-success" style="font-size: 12px;">
+                                        Mark Resolved
+                                    </button>
+                                    <button onclick="dismissFlagPrompt(${flag.id})" class="button-warning" style="font-size: 12px;">
+                                        Dismiss
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+                
+                listDiv.innerHTML = html;
+                log(`Loaded ${data.flags.length} ${status} flags`, 'info');
+            } catch (error) {
+                listDiv.innerHTML = '<p style="color: #e74c3c;">Failed to load flagged content</p>';
+            }
+        }
+
+        async function resolveFlagPrompt(flagId) {
+            const notes = prompt('Enter admin notes (optional):');
+            if (notes === null) return; // User cancelled
+            
+            await updateFlagStatus(flagId, 'resolved', notes);
+        }
+
+        async function dismissFlagPrompt(flagId) {
+            const notes = prompt('Enter reason for dismissal (optional):');
+            if (notes === null) return; // User cancelled
+            
+            await updateFlagStatus(flagId, 'dismissed', notes);
+        }
+
+        async function updateFlagStatus(flagId, status, adminNotes) {
+            try {
+                log(`Updating flag ${flagId} to ${status}...`, 'info');
+                await fetch(`${API_BASE}/api/admin/flags/${flagId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status,
+                        adminNotes,
+                        resolvedBy: 'admin'
+                    })
+                });
+                
+                log(`✓ Flag ${status} successfully`, 'success');
+                await loadFlagStats();
+                await loadFlaggedContent();
+            } catch (error) {
+                log(`✗ Failed to update flag: ${error.message}`, 'error');
+            }
+        }
+
+        async function viewFlaggedContent(eventId, language, contentType) {
+            // Set the event and language in the dropdowns
+            document.getElementById('eventId').value = eventId;
+            updateLanguageOptions();
+            document.getElementById('language').value = language;
+            
+            // Set the content type and load it for review
+            document.getElementById('contentType').value = contentType;
+            await loadContentForReview();
+            
+            // Scroll to the review section
+            document.querySelector('#reviewContent').scrollIntoView({ behavior: 'smooth' });
+            
+            log(`Loaded ${contentType} for review (Event: ${eventId}, Language: ${language})`, 'info');
+        }
+
         // Initialize
         async function init() {
             log('Admin dashboard initialized', 'info');
@@ -1323,7 +1640,9 @@
                 loadFeatures(),
                 loadCacheStats(),
                 loadQueueStats(),
-                loadCaptionStats()
+                loadCaptionStats(),
+                loadFlagStats(),
+                loadFlaggedContent()
             ]);
             startAutoRefresh();
         }
