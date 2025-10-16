@@ -296,26 +296,32 @@ app.get('/api/summaries/:eventId', async (req: Request, res: Response) => {
     const cacheKey = CacheService.summaryKey(eventId, language);
     const cached = await cache.get<string>(cacheKey);
     
-    if (cached) {
-      res.set('X-Cache-Hit', 'true');
-      return res.json({
-        eventId,
-        language,
-        summary: cached,
-        cached: true,
-      });
-    }
+    // Don't use cache for metadata - always fetch from DB to get approval status
+    // if (cached) {
+    //   res.set('X-Cache-Hit', 'true');
+    //   return res.json({
+    //     eventId,
+    //     language,
+    //     summary: cached,
+    //     cached: true,
+    //   });
+    // }
 
-    const summary = await db.getSummary(eventId, language);
+    const result = await db.query(
+      'SELECT summary, model, created_at, approved, approved_at, approved_by, edited_by_human, last_edited_by FROM ai_summaries WHERE event_id = $1 AND language = $2',
+      [eventId, language]
+    );
     
-    if (!summary) {
-      return res.status(404).json({ 
+    if (result.rows.length === 0) {
+      return res.status(404).json({
         error: 'Summary not found',
         message: 'Generate a summary first',
         eventId,
         language,
       });
     }
+
+    const summary = result.rows[0];
 
     // Cache for future requests
     await cache.set(cacheKey, summary.summary);
@@ -326,6 +332,11 @@ app.get('/api/summaries/:eventId', async (req: Request, res: Response) => {
       summary: summary.summary,
       model: summary.model,
       createdAt: summary.created_at,
+      approved: summary.approved || false,
+      approvedAt: summary.approved_at,
+      approvedBy: summary.approved_by,
+      editedByHuman: summary.edited_by_human || false,
+      lastEditedBy: summary.last_edited_by,
       cached: false,
     });
   } catch (error: any) {
@@ -333,6 +344,79 @@ app.get('/api/summaries/:eventId', async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
   }
 });
+// Update summary (for admin corrections)
+app.put('/api/summaries/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body'
+      });
+    }
+
+    if (!req.body.summary) {
+      return res.status(400).json({
+        error: 'Summary content is required',
+        message: 'Please provide the updated summary text'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
+    const { summary, approved, approvedBy } = req.body;
+
+    // Check if summary exists
+    const existing = await db.getSummary(eventId, language);
+    if (!existing) {
+      return res.status(404).json({
+        error: 'Summary not found',
+        message: 'Cannot update non-existent summary. Generate one first.',
+        eventId,
+        language,
+      });
+    }
+
+    // Update the summary in database with human edit tracking
+    if (approved !== undefined) {
+      await db.query(
+        `UPDATE ai_summaries
+         SET summary = $1, approved = $2, approved_at = $3, approved_by = $4,
+             edited_by_human = true, last_edited_by = $5, updated_at = NOW()
+         WHERE event_id = $6 AND language = $7`,
+        [summary, approved, approved ? new Date() : null, approvedBy || 'admin', approvedBy || 'admin', eventId, language]
+      );
+    } else {
+      await db.query(
+        `UPDATE ai_summaries
+         SET summary = $1, edited_by_human = true, last_edited_by = $2, updated_at = NOW()
+         WHERE event_id = $3 AND language = $4`,
+        [summary, 'admin', eventId, language]
+      );
+    }
+
+    // Invalidate cache
+    const cacheKey = CacheService.summaryKey(eventId, language);
+    await cache.invalidate(cacheKey);
+
+    res.json({
+      success: true,
+      message: 'Summary updated successfully',
+      eventId,
+      language,
+      summary,
+      approved: approved || false,
+      editedByHuman: true,
+    });
+  } catch (error: any) {
+    console.error('Update summary error:', error);
+    res.status(500).json({
+      error: 'Failed to update summary',
+      message: error.message,
+    });
+  }
+});
+
 // ========================================
 // Quiz Generation Endpoints (Phase 2)
 // ========================================
@@ -441,18 +525,19 @@ app.get('/api/quizzes/:eventId', async (req: Request, res: Response) => {
     const cacheKey = `quiz:${eventId}:${language}`;
     const cached = await cache.get<any>(cacheKey);
 
-    if (cached) {
-      res.set('X-Cache-Hit', 'true');
-      return res.json({
-        eventId,
-        language,
-        quiz: cached,
-        cached: true,
-      });
-    }
+    // Don't use cache for metadata - always fetch from DB to get approval status
+    // if (cached) {
+    //   res.set('X-Cache-Hit', 'true');
+    //   return res.json({
+    //     eventId,
+    //     language,
+    //     quiz: cached,
+    //     cached: true,
+    //   });
+    // }
 
     const result = await db.query(
-      'SELECT quiz_data, model, created_at FROM ai_quizzes WHERE event_id = $1 AND language = $2',
+      'SELECT quiz_data, model, created_at, approved, approved_at, approved_by, edited_by_human, last_edited_by FROM ai_quizzes WHERE event_id = $1 AND language = $2',
       [eventId, language]
     );
 
@@ -476,11 +561,93 @@ app.get('/api/quizzes/:eventId', async (req: Request, res: Response) => {
       quiz: quiz.quiz_data,
       model: quiz.model,
       createdAt: quiz.created_at,
+      approved: quiz.approved || false,
+      approvedAt: quiz.approved_at,
+      approvedBy: quiz.approved_by,
+      editedByHuman: quiz.edited_by_human || false,
+      lastEditedBy: quiz.last_edited_by,
       cached: false,
     });
   } catch (error: any) {
     console.error('Get quiz error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Update quiz (for admin corrections)
+app.put('/api/quizzes/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body'
+      });
+    }
+
+    if (!req.body.quiz) {
+      return res.status(400).json({
+        error: 'Quiz data is required',
+        message: 'Please provide the updated quiz data'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
+    const { quiz, approved, approvedBy } = req.body;
+
+    // Check if quiz exists
+    const result = await db.query(
+      'SELECT id FROM ai_quizzes WHERE event_id = $1 AND language = $2',
+      [eventId, language]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Quiz not found',
+        message: 'Cannot update non-existent quiz. Generate one first.',
+        eventId,
+        language,
+      });
+    }
+
+    // Update the quiz in database with human edit tracking
+    if (approved !== undefined) {
+      await db.query(
+        `UPDATE ai_quizzes
+         SET quiz_data = $1, approved = $2, approved_at = $3, approved_by = $4,
+             edited_by_human = true, last_edited_by = $5, updated_at = NOW()
+         WHERE event_id = $6 AND language = $7`,
+        [JSON.stringify(quiz), approved, approved ? new Date() : null, approvedBy || 'admin', approvedBy || 'admin', eventId, language]
+      );
+    } else {
+      await db.query(
+        `UPDATE ai_quizzes
+         SET quiz_data = $1, edited_by_human = true, last_edited_by = $2, updated_at = NOW()
+         WHERE event_id = $3 AND language = $4`,
+        [JSON.stringify(quiz), 'admin', eventId, language]
+      );
+    }
+
+    // Invalidate cache
+    const cacheKey = `quiz:${eventId}:${language}`;
+    await cache.invalidate(cacheKey);
+
+    res.json({
+      success: true,
+      message: 'Quiz updated successfully',
+      eventId,
+      language,
+      quiz,
+      approved: approved || false,
+      editedByHuman: true,
+    });
+  } catch (error: any) {
+    console.error('Update quiz error:', error);
+    res.status(500).json({
+      error: 'Failed to update quiz',
+      message: error.message,
+    });
   }
 });
 

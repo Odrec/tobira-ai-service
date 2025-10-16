@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS ai_summaries (
     summary TEXT NOT NULL,
     model VARCHAR(50) NOT NULL,
     processing_time_ms INTEGER,
+    approved BOOLEAN DEFAULT FALSE,
+    approved_at TIMESTAMPTZ,
+    approved_by TEXT,
+    edited_by_human BOOLEAN DEFAULT FALSE,
+    last_edited_by TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(event_id, language)
@@ -42,6 +47,11 @@ CREATE TABLE IF NOT EXISTS ai_quizzes (
     quiz_data JSONB NOT NULL,
     model VARCHAR(50) NOT NULL,
     processing_time_ms INTEGER,
+    approved BOOLEAN DEFAULT FALSE,
+    approved_at TIMESTAMPTZ,
+    approved_by TEXT,
+    edited_by_human BOOLEAN DEFAULT FALSE,
+    last_edited_by TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(event_id, language)

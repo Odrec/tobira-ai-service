@@ -140,6 +140,56 @@
 
         .button-warning:hover {
             background: #e67e22;
+
+        .button-success {
+            background: #27ae60;
+        }
+
+        .button-success:hover {
+            background: #229954;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            min-height: 200px;
+            resize: vertical;
+        }
+
+        .quiz-question {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 3px solid #3498db;
+        }
+
+        .quiz-question input[type="text"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+
+        .review-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .approval-badge-approved {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .review-badge-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
         }
 
         .button-group {
@@ -343,6 +393,38 @@
                     <button class="button-danger" onclick="deleteAllQuizzes()">Delete ALL Quizzes</button>
                 </div>
             </div>
+
+        <!-- Review & Edit -->
+        <div class="card">
+            <h2>Review & Edit AI Content</h2>
+            
+            <div class="form-group">
+                <label>Content Type:</label>
+                <select id="contentType" onchange="loadContentForReview()">
+                    <option value="">Select content type...</option>
+                    <option value="summary">Summary</option>
+                    <option value="quiz">Quiz</option>
+                </select>
+            </div>
+
+            <div id="reviewContent" style="margin-top: 20px; display: none;">
+                <div id="contentDisplay"></div>
+                
+                <div class="form-group" style="margin-top: 20px;">
+                    <label>
+                        <input type="checkbox" id="approvedCheckbox" onchange="toggleReviewStatus()">
+                        Mark as approved
+                    </label>
+                    <div id="reviewInfo" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                </div>
+
+                <div class="button-group">
+                    <button onclick="saveContent()">Save Changes</button>
+                    <button onclick="approveContent()" class="button-success" style="background: #27ae60;">Approve & Mark Approved</button>
+                    <button onclick="loadContentForReview()">Reload</button>
+                </div>
+            </div>
+        </div>
         </div>
 
         <!-- Activity Log -->
@@ -870,6 +952,235 @@
             } catch (error) {
                 log(`✗ Delete failed: ${error.message}`, 'error');
             }
+        }
+
+
+        // Review & Edit functionality
+        let currentContent = null;
+        let currentContentType = null;
+
+        async function loadContentForReview() {
+            const eventId = document.getElementById('eventId').value;
+            const language = document.getElementById('language').value;
+            const contentType = document.getElementById('contentType').value;
+            
+            if (!eventId || !language || !contentType) {
+                document.getElementById('reviewContent').style.display = 'none';
+                return;
+            }
+
+            const eventInfo = formatEventInfo(eventId);
+            currentContentType = contentType;
+            
+            try {
+                log(`Loading ${contentType} for ${eventInfo}...`, 'info');
+                const endpoint = contentType === 'summary' 
+                    ? `/api/summaries/${eventId}?language=${language}`
+                    : `/api/quizzes/${eventId}?language=${language}`;
+                
+                const data = await fetchAPI(endpoint);
+                currentContent = data;
+                
+                document.getElementById('reviewContent').style.display = 'block';
+                
+                if (contentType === 'summary') {
+                    renderSummaryEditor(data);
+                } else {
+                    renderQuizEditor(data);
+                }
+                
+                updateReviewStatus(data);
+                log(`✓ ${contentType} loaded successfully`, 'success');
+            } catch (error) {
+                document.getElementById('reviewContent').style.display = 'none';
+                log(`✗ No ${contentType} found for ${eventInfo}`, 'error');
+            }
+        }
+
+        function renderSummaryEditor(data) {
+            const html = `
+                <div style="margin-bottom: 15px;">
+                    <strong>Summary for Event ${data.eventId} (${data.language})</strong>
+                    ${data.approved ? '<span class="review-badge approval-badge-approved">✓ APPROVED</span>' : '<span class="review-badge review-badge-pending">⚠ NOT APPROVED</span>'}
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Model: ${data.model} | Created: ${new Date(data.createdAt).toLocaleString()}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Summary Text:</label>
+                    <textarea id="summaryText" rows="10">${data.summary}</textarea>
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        ${data.summary.length} characters
+                    </div>
+                </div>
+            `;
+            document.getElementById('contentDisplay').innerHTML = html;
+        }
+
+        function renderQuizEditor(data) {
+            const questions = data.quiz.questions || [];
+            let html = `
+                <div style="margin-bottom: 15px;">
+                    <strong>Quiz for Event ${data.eventId} (${data.language})</strong>
+                    ${data.approved ? '<span class="review-badge approval-badge-approved">✓ APPROVED</span>' : '<span class="review-badge review-badge-pending">⚠ NOT APPROVED</span>'}
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Model: ${data.model} | Created: ${new Date(data.createdAt).toLocaleString()} | ${questions.length} questions
+                    </div>
+                </div>
+            `;
+            
+            questions.forEach((q, index) => {
+                html += `
+                    <div class="quiz-question">
+                        <strong>Question ${index + 1}</strong> 
+                        <span style="font-size: 11px; color: #666;">(${q.type}, ${q.difficulty})</span>
+                        <input type="text" id="q${index}_text" value="${escapeHtml(q.question)}" placeholder="Question text">
+                        
+                        ${q.type === 'multiple_choice' ? `
+                            <div style="margin-top: 10px;">
+                                <label style="font-size: 12px;">Options:</label>
+                                ${q.options.map((opt, i) => `
+                                    <div style="display: flex; align-items: center; margin: 5px 0;">
+                                        <input type="radio" name="q${index}_correct" value="${i}" ${i === q.correct_answer ? 'checked' : ''} style="width: auto; margin-right: 5px;">
+                                        <input type="text" id="q${index}_opt${i}" value="${escapeHtml(opt)}" style="flex: 1;">
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        <div style="margin-top: 10px;">
+                            <label style="font-size: 12px;">Explanation:</label>
+                            <textarea id="q${index}_explanation" rows="2">${escapeHtml(q.explanation)}</textarea>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('contentDisplay').innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function updateReviewStatus(data) {
+            const checkbox = document.getElementById('approvedCheckbox');
+            const reviewInfo = document.getElementById('reviewInfo');
+            
+            checkbox.checked = data.approved || false;
+            
+            if (data.approved && data.approvedAt) {
+                const reviewDate = new Date(data.approvedAt).toLocaleString();
+                const reviewBy = data.approvedBy || 'Unknown';
+                reviewInfo.innerHTML = `<strong>Reviewed:</strong> ${reviewDate} by ${reviewBy}`;
+            } else {
+                reviewInfo.innerHTML = '<em>Not yet approved</em>';
+            }
+        }
+
+        function toggleReviewStatus() {
+            // Just update UI, actual save happens in saveContent
+            const checkbox = document.getElementById('approvedCheckbox');
+            const reviewInfo = document.getElementById('reviewInfo');
+            
+            if (checkbox.checked) {
+                reviewInfo.innerHTML = '<em>Will be marked as approved on save</em>';
+            } else {
+                reviewInfo.innerHTML = '<em>Will be marked as not approved on save</em>';
+            }
+        }
+
+        async function saveContent() {
+            if (!currentContent || !currentContentType) {
+                log('✗ No content loaded to save', 'error');
+                return;
+            }
+
+            const eventId = currentContent.eventId;
+            const language = currentContent.language;
+            const approved = document.getElementById('approvedCheckbox').checked;
+            const eventInfo = formatEventInfo(eventId);
+            
+            try {
+                if (currentContentType === 'summary') {
+                    const summaryText = document.getElementById('summaryText').value;
+                    
+                    log(`Saving summary for ${eventInfo}...`, 'info');
+                    const result = await fetch(`${API_BASE}/api/summaries/${eventId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            language,
+                            summary: summaryText,
+                            approved,
+                            approvedBy: 'admin'
+                        })
+                    });
+                    
+                    if (!result.ok) throw new Error(`HTTP ${result.status}`);
+                    log(`✓ Summary saved successfully`, 'success');
+                } else {
+                    // Save quiz
+                    const quiz = collectQuizData();
+                    
+                    log(`Saving quiz for ${eventInfo}...`, 'info');
+                    const result = await fetch(`${API_BASE}/api/quizzes/${eventId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            language,
+                            quiz,
+                            approved,
+                            approvedBy: 'admin'
+                        })
+                    });
+                    
+                    if (!result.ok) throw new Error(`HTTP ${result.status}`);
+                    log(`✓ Quiz saved successfully`, 'success');
+                }
+                
+                // Reload to show updated status
+                await loadContentForReview();
+            } catch (error) {
+                log(`✗ Save failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function approveContent() {
+            document.getElementById('approvedCheckbox').checked = true;
+            await saveContent();
+        }
+
+        function collectQuizData() {
+            const questions = currentContent.quiz.questions.map((q, index) => {
+                const questionText = document.getElementById(`q${index}_text`).value;
+                const explanation = document.getElementById(`q${index}_explanation`).value;
+                
+                if (q.type === 'multiple_choice') {
+                    const options = q.options.map((_, i) => 
+                        document.getElementById(`q${index}_opt${i}`).value
+                    );
+                    const correctAnswer = parseInt(document.querySelector(`input[name="q${index}_correct"]:checked`).value);
+                    
+                    return {
+                        ...q,
+                        question: questionText,
+                        options,
+                        correct_answer: correctAnswer,
+                        explanation
+                    };
+                } else {
+                    return {
+                        ...q,
+                        question: questionText,
+                        explanation
+                    };
+                }
+            });
+            
+            return { ...currentContent.quiz, questions };
         }
 
         // Auto-refresh
