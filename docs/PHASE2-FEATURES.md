@@ -275,14 +275,108 @@ Web-based UI for monitoring and managing the AI service.
    - Events with transcripts
    - Events needing extraction
 
-4. **Activity Log**
+4. **Content Review & Editing**
+   - Edit AI-generated summaries and quizzes
+   - Mark content as approved
+   - Track human edits with timestamps
+
+5. **Flagged Content Management** 🚩
+   - View user-flagged AI content
+   - Filter by status (pending/resolved/dismissed)
+   - Review flag reasons and user feedback
+   - Resolve or dismiss flags with admin notes
+   - Automatic unflagging when all flags are addressed
+   - Visual warning indicators on flagged content
+
+6. **Activity Log**
    - Recent API calls
    - Success/failure notifications
    - Real-time updates
 
-5. **Auto-refresh**
+7. **Auto-refresh**
    - Updates every 5 seconds
    - No page reload needed
+
+### 7. Content Flagging & Moderation
+
+User-driven quality control system that allows end users to report problematic AI-generated content.
+
+**How It Works:**
+
+1. **User Flags Content** (in Tobira UI)
+   - Users click "Report" button on summaries or quizzes
+   - Provide optional reason for flagging
+   - Creates record in `ai_content_flags` table
+   - Sets `flagged = true` on the content
+
+2. **Admin Reviews** (in Admin Dashboard)
+   - View all flagged content in "🚩 Flagged Content" section
+   - See flag details: user, reason, timestamp
+   - Click "View Content" to review the flagged item
+   - Visual warning banner shows all flag information
+
+3. **Admin Actions**
+   - **Mark Resolved**: Flag was valid, content has been corrected
+   - **Dismiss**: Flag was not valid or content is acceptable
+   - Optional admin notes for documentation
+
+4. **Automatic Unflagging**
+   - When last pending flag is resolved/dismissed
+   - System automatically sets `flagged = false` on content
+   - "Report" button reactivates in Tobira UI
+   - Users can flag again if new issues arise
+
+**API Endpoints:**
+
+```bash
+# Get flagged content (filtered by status)
+GET /api/admin/flags?status=pending
+GET /api/admin/flags?status=resolved
+GET /api/admin/flags?status=dismissed
+
+# Update flag status
+PUT /api/admin/flags/:id
+Body: {
+  "status": "resolved|dismissed|pending",
+  "adminNotes": "Content has been corrected",
+  "resolvedBy": "admin_username"
+}
+
+# Get flag statistics
+GET /api/admin/flags/stats
+```
+
+**Flag Statistics Response:**
+
+```json
+{
+  "pending": 5,
+  "resolved": 23,
+  "dismissed": 12,
+  "total": 40
+}
+```
+
+**Database Schema:**
+
+The `ai_content_flags` table (in Tobira database) stores:
+- `content_type`: 'summary' or 'quiz'
+- `content_id`: ID from ai_summaries or ai_quizzes
+- `event_id`: Associated video event
+- `username`: User who flagged (optional)
+- `reason`: Why it was flagged (optional)
+- `status`: 'pending', 'resolved', or 'dismissed'
+- `admin_notes`: Admin's notes on resolution
+- `resolved_by`: Admin who handled the flag
+- `resolved_at`: Timestamp of resolution
+- `created_at`: When flag was created
+
+**Benefits:**
+
+- **Quality Control**: Users help identify problematic AI content
+- **Continuous Improvement**: Track common issues to improve prompts
+- **Transparency**: Users see their feedback is acted upon
+- **Accountability**: Full audit trail of flags and resolutions
 
 ## Installation & Setup
 

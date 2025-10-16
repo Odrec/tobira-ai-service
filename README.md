@@ -21,6 +21,7 @@ This is a **separate microservice** that connects to Tobira's PostgreSQL databas
 - ✅ **Queue System** - BullMQ-based async processing with Redis
 - ✅ **Batch Processing** - Process multiple videos efficiently
 - ✅ **Admin Dashboard** - Web-based monitoring and management UI
+- ✅ **Content Flagging & Moderation** - User-driven quality control with admin review
 
 ## Architecture
 
@@ -201,6 +202,45 @@ Second request is super fast (<100ms) thanks to caching!
 ```
 
 **forceRegenerate:** Set to `true` to regenerate even if summary exists (costs OpenAI tokens).
+
+### Quizzes
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/quizzes/generate/:eventId` | POST | Generate AI quiz from transcript |
+| `/api/quizzes/:eventId` | GET | Get existing quiz (cached) |
+| `/api/quizzes/:eventId` | PUT | Update quiz content |
+
+### Flagged Content (Moderation)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/admin/flags` | GET | Get flagged content (filter by status) |
+| `/api/admin/flags/:id` | PUT | Update flag status (resolve/dismiss) |
+| `/api/admin/flags/stats` | GET | Get flag statistics by status |
+
+**Query Parameters for GET /api/admin/flags:**
+```bash
+?status=pending    # Default, shows content awaiting review
+?status=resolved   # Shows resolved flags
+?status=dismissed  # Shows dismissed flags
+```
+
+**Update Flag Request Body:**
+```json
+{
+  "status": "resolved",  // or "dismissed" or "pending"
+  "adminNotes": "Content has been corrected",
+  "resolvedBy": "admin_username"
+}
+```
+
+**How Flagging Works:**
+1. Users flag problematic AI content in Tobira UI
+2. Flags appear in admin dashboard with user feedback
+3. Admins review and resolve/dismiss flags
+4. System automatically unflags content when all pending flags are addressed
+5. Report button reactivates for users
 
 ### Admin
 
@@ -448,6 +488,8 @@ curl http://localhost:3001/api/admin/metrics
 - [x] Queue system (BullMQ + Redis)
 - [x] Batch processing for existing videos
 - [x] Admin dashboard UI
+- [x] Content review and approval system
+- [x] Content flagging and moderation (2025-10-16)
 
 See [`docs/PHASE2-FEATURES.md`](docs/PHASE2-FEATURES.md) for detailed Phase 2 documentation and usage examples.
 
@@ -471,6 +513,6 @@ Same as Tobira - check main project for license details.
 
 ---
 
-**Current Status (October 2025):** Phase 2 complete! The service now includes automatic caption extraction, quiz generation, queue-based processing, and an admin dashboard. Ready for production testing.
+**Current Status (October 2025):** Phase 2 complete! The service now includes automatic caption extraction, quiz generation, queue-based processing, admin dashboard with content review/approval, and user-driven content flagging/moderation. Ready for production testing.
 
 **Built for the Tobira video portal community** 🚀
