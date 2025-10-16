@@ -728,6 +728,7 @@
                 const result = await response.json();
                 log(`✓ ${result.message} for ${eventInfo}`, 'success');
                 await loadCaptionStats();
+                await refreshVideoData(eventId);
             } catch (error) {
                 log(`✗ Delete failed: ${error.message}`, 'error');
             }
@@ -755,6 +756,7 @@
                 
                 const result = await response.json();
                 log(`✓ ${result.message} for ${eventInfo}`, 'success');
+                await refreshVideoData(eventId);
             } catch (error) {
                 log(`✗ Delete failed: ${error.message}`, 'error');
             }
@@ -782,6 +784,7 @@
                 
                 const result = await response.json();
                 log(`✓ ${result.message} for ${eventInfo}`, 'success');
+                await refreshVideoData(eventId);
             } catch (error) {
                 log(`✗ Delete failed: ${error.message}`, 'error');
             }
