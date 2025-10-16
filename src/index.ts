@@ -1249,12 +1249,48 @@ app.put('/api/admin/flags/:id', async (req: Request, res: Response) => {
 
     const resolvedAt = (status === 'resolved' || status === 'dismissed') ? new Date() : null;
 
+    // Get flag details before updating
+    const flagResult = await db.query(
+      `SELECT content_type, content_id FROM ai_content_flags WHERE id = $1`,
+      [flagId]
+    );
+
+    if (flagResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Flag not found',
+        message: 'The specified flag does not exist'
+      });
+    }
+
+    const flag = flagResult.rows[0];
+
+    // Update the flag status
     await db.query(
-      `UPDATE ai_content_flags 
+      `UPDATE ai_content_flags
        SET status = $1, admin_notes = $2, resolved_by = $3, resolved_at = $4
        WHERE id = $5`,
       [status, adminNotes || null, resolvedBy || 'admin', resolvedAt, flagId]
     );
+
+    // If resolved or dismissed, check if there are any remaining pending flags for this content
+    if (status === 'resolved' || status === 'dismissed') {
+      const pendingFlagsResult = await db.query(
+        `SELECT COUNT(*) as count FROM ai_content_flags
+         WHERE content_type = $1 AND content_id = $2 AND status = 'pending'`,
+        [flag.content_type, flag.content_id]
+      );
+
+      const pendingCount = parseInt(pendingFlagsResult.rows[0].count);
+
+      // If no pending flags remain, unflag the content
+      if (pendingCount === 0) {
+        const tableName = flag.content_type === 'summary' ? 'ai_summaries' : 'ai_quizzes';
+        await db.query(
+          `UPDATE ${tableName} SET flagged = false WHERE id = $1`,
+          [flag.content_id]
+        );
+      }
+    }
 
     res.json({
       success: true,
