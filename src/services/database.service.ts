@@ -47,6 +47,13 @@ class DatabaseService {
   }
 
   /**
+   * Get the pool instance for advanced queries
+   */
+  getPool(): Pool {
+    return this.pool;
+  }
+
+  /**
    * Execute a query with optional parameters
    */
   async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {

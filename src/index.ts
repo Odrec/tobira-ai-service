@@ -9,6 +9,7 @@ import cache, { CacheService } from './services/cache.service';
 import { monitoring } from './utils/monitoring';
 import { CaptionExtractorService } from './services/caption-extractor.service';
 import * as queueService from './services/queue.service';
+import { CumulativeQuizService } from './services/cumulative-quiz.service';
 import { normalizeLanguageCode } from './utils/language';
 
 const app = express();
@@ -48,6 +49,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   
   next();
 });
+
+// Initialize cumulative quiz service
+const cumulativeQuizService = new CumulativeQuizService(
+  db.getPool(),
+  cache
+);
 
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
@@ -649,6 +656,102 @@ app.put('/api/quizzes/:eventId', async (req: Request, res: Response) => {
       message: error.message,
     });
   }
+
+// ========================================
+// Cumulative Quiz Endpoints (Phase 4)
+// ========================================
+
+// Generate cumulative quiz for an event (includes all videos in series up to this point)
+app.post('/api/cumulative-quizzes/generate/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.body.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body (e.g., "en", "de")'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.body.language);
+    const forceRegenerate = req.body.forceRegenerate === true;
+
+    console.log(`Generating cumulative quiz for event ${eventId}, language: ${language}`);
+
+    const quiz = await cumulativeQuizService.generateCumulativeQuiz(
+      eventId,
+      language,
+      forceRegenerate
+    );
+
+    res.json({
+      success: true,
+      eventId: quiz.eventId,
+      seriesId: quiz.seriesId,
+      language: quiz.language,
+      videoCount: quiz.videoCount,
+      questionCount: quiz.questions.length,
+      processingTimeMs: quiz.processingTimeMs,
+      model: quiz.model,
+      quiz,
+    });
+  } catch (error: any) {
+    console.error('Generate cumulative quiz error:', error);
+    res.status(500).json({
+      error: 'Failed to generate cumulative quiz',
+      message: error.message,
+    });
+  }
+});
+
+// Get cumulative quiz for an event
+app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    const language = normalizeLanguageCode(req.query.language as string || 'en');
+
+    const quiz = await cumulativeQuizService.getCachedQuiz(eventId, language);
+
+    if (!quiz) {
+      return res.status(404).json({
+        error: 'Cumulative quiz not found',
+        message: 'Generate a cumulative quiz first',
+        eventId,
+        language,
+      });
+    }
+
+    res.set('X-Cache-Hit', 'true');
+    res.json({
+      eventId: quiz.eventId,
+      seriesId: quiz.seriesId,
+      language: quiz.language,
+      videoCount: quiz.videoCount,
+      questionCount: quiz.questions.length,
+      quiz,
+    });
+  } catch (error: any) {
+    console.error('Get cumulative quiz error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve cumulative quiz',
+      message: error.message,
+    });
+  }
+});
+
+// Get cumulative quiz statistics
+app.get('/api/cumulative-quizzes/stats', async (req: Request, res: Response) => {
+  try {
+    const stats = await cumulativeQuizService.getStats();
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Cumulative quiz stats error:', error);
+    res.status(500).json({
+      error: 'Failed to get cumulative quiz stats',
+      message: error.message,
+    });
+  }
+});
 });
 
 // ========================================
