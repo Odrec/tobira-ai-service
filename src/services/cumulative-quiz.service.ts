@@ -235,37 +235,46 @@ export class CumulativeQuizService {
    * Save cumulative quiz to database
    */
   private async saveCumulativeQuiz(quiz: CumulativeQuiz): Promise<void> {
-    const query = `
-      INSERT INTO ai_cumulative_quizzes (
-        event_id, series_id, language, model, processing_time_ms,
-        questions, included_event_ids, video_count
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      ON CONFLICT (event_id, language)
-      DO UPDATE SET
-        questions = EXCLUDED.questions,
-        included_event_ids = EXCLUDED.included_event_ids,
-        video_count = EXCLUDED.video_count,
-        processing_time_ms = EXCLUDED.processing_time_ms,
-        updated_at = now()
-      RETURNING id
-    `;
-    
-    await this.pool.query(query, [
-      quiz.eventId,
-      quiz.seriesId,
-      quiz.language,
-      quiz.model,
-      quiz.processingTimeMs,
-      JSON.stringify(quiz.questions),
-      quiz.includedEventIds,
-      quiz.videoCount
-    ]);
-    
-    // Cache the result
-    const cacheKey = `cumulative_quiz:${quiz.eventId}:${quiz.language}`;
-    await this.cache.set(cacheKey, quiz, 604800); // 7 days TTL
-    
-    console.log(`Saved cumulative quiz to database for event ${quiz.eventId}`);
+    try {
+      const query = `
+        INSERT INTO ai_cumulative_quizzes (
+          event_id, series_id, language, model, processing_time_ms,
+          questions, included_event_ids, video_count
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (event_id, language)
+        DO UPDATE SET
+          questions = EXCLUDED.questions,
+          included_event_ids = EXCLUDED.included_event_ids,
+          video_count = EXCLUDED.video_count,
+          processing_time_ms = EXCLUDED.processing_time_ms,
+          updated_at = now()
+        RETURNING id
+      `;
+      
+      console.log(`Saving cumulative quiz to DB: eventId=${quiz.eventId}, seriesId=${quiz.seriesId}, language=${quiz.language}`);
+      
+      const result = await this.pool.query(query, [
+        quiz.eventId,
+        quiz.seriesId,
+        quiz.language,
+        quiz.model,
+        quiz.processingTimeMs,
+        JSON.stringify(quiz.questions),
+        quiz.includedEventIds,
+        quiz.videoCount
+      ]);
+      
+      console.log(`Successfully saved cumulative quiz to database (ID: ${result.rows[0]?.id})`);
+      
+      // Cache the result
+      const cacheKey = `cumulative_quiz:${quiz.eventId}:${quiz.language}`;
+      await this.cache.set(cacheKey, quiz, 604800); // 7 days TTL
+      
+      console.log(`Cached cumulative quiz with key: ${cacheKey}`);
+    } catch (error) {
+      console.error(`ERROR saving cumulative quiz:`, error);
+      throw error;
+    }
   }
 
   /**
