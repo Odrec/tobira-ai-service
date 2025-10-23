@@ -220,8 +220,8 @@ export class CumulativeQuizService {
             videoContext: {
               eventId: event.id,
               videoTitle: event.title,
-              videoNumber: event.position,
-              timestamp: q.timestamp
+              videoNumber: Number(event.position),
+              timestamp: q.timestamp ? Number(q.timestamp) : undefined
             }
           });
         });

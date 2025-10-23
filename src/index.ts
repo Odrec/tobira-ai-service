@@ -723,7 +723,13 @@ app.get('/api/cumulative-quizzes/stats', async (req: Request, res: Response) => 
 app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId;
-    const language = normalizeLanguageCode(req.query.language as string || 'en');
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language parameter'
+      });
+    }
+    const language = normalizeLanguageCode(req.query.language as string);
 
     const quiz = await cumulativeQuizService.getCachedQuiz(eventId, language);
 
@@ -757,7 +763,13 @@ app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) 
 app.delete('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) => {
   try {
     const eventId = req.params.eventId;
-    const language = normalizeLanguageCode(req.query.language as string || 'en');
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language parameter'
+      });
+    }
+    const language = normalizeLanguageCode(req.query.language as string);
     
     const result = await db.query(
       'DELETE FROM ai_cumulative_quizzes WHERE event_id = $1 AND language = $2 RETURNING id',
