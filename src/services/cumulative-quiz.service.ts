@@ -251,7 +251,13 @@ export class CumulativeQuizService {
         RETURNING id
       `;
       
-      console.log(`Saving cumulative quiz to DB: eventId=${quiz.eventId}, seriesId=${quiz.seriesId}, language=${quiz.language}`);
+      console.log(`[DEBUG] saveCumulativeQuiz CALLED`);
+      console.log(`[DEBUG] Parameters: eventId=${quiz.eventId}, seriesId=${quiz.seriesId}, language=${quiz.language}`);
+      console.log(`[DEBUG] Questions count: ${quiz.questions.length}`);
+      console.log(`[DEBUG] Included event IDs: ${quiz.includedEventIds}`);
+      console.log(`[DEBUG] Video count: ${quiz.videoCount}`);
+      
+      console.log(`[DEBUG] About to execute INSERT query...`);
       
       const result = await this.pool.query(query, [
         quiz.eventId,
@@ -264,15 +270,21 @@ export class CumulativeQuizService {
         quiz.videoCount
       ]);
       
-      console.log(`Successfully saved cumulative quiz to database (ID: ${result.rows[0]?.id})`);
+      console.log(`[DEBUG] Database INSERT completed successfully`);
+      console.log(`[DEBUG] Returned ID: ${result.rows[0]?.id}`);
+      console.log(`[DEBUG] Rows affected: ${result.rowCount}`);
       
       // Cache the result
       const cacheKey = `cumulative_quiz:${quiz.eventId}:${quiz.language}`;
+      console.log(`[DEBUG] About to cache with key: ${cacheKey}`);
       await this.cache.set(cacheKey, quiz, 604800); // 7 days TTL
       
-      console.log(`Cached cumulative quiz with key: ${cacheKey}`);
-    } catch (error) {
-      console.error(`ERROR saving cumulative quiz:`, error);
+      console.log(`[DEBUG] Successfully cached cumulative quiz`);
+    } catch (error: any) {
+      console.error(`[ERROR] saveCumulativeQuiz FAILED:`, error);
+      console.error(`[ERROR] Error name: ${error.name}`);
+      console.error(`[ERROR] Error message: ${error.message}`);
+      console.error(`[ERROR] Error stack:`, error.stack);
       throw error;
     }
   }

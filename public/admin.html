@@ -877,13 +877,29 @@
             const language = document.getElementById('language').value;
             const eventInfo = formatEventInfo(eventId);
             
+            console.log('[DEBUG] generateCumulativeQuiz called');
+            console.log('[DEBUG] eventId:', eventId);
+            console.log('[DEBUG] language:', language);
+            console.log('[DEBUG] eventInfo:', eventInfo);
+            
+            if (!eventId) {
+                log('❌ Please select a video first', 'error');
+                return;
+            }
+            
+            if (!language) {
+                log('❌ Please select a language first', 'error');
+                return;
+            }
+            
             log(`Generating cumulative quiz for ${eventInfo}...`, 'info');
             try {
-                const result = await postAPI(`/api/cumulative-quizzes/generate/${eventId}`, { language });
+                const result = await postAPI(`/api/cumulative-quizzes/generate/${eventId}`, { language, forceRegenerate: true });
                 log(`✓ Cumulative quiz generated for ${eventInfo}: ${result.videoCount} videos, ${result.questionCount} questions`, 'success');
                 await refreshVideoData(eventId);
             } catch (error) {
-                // Error already logged
+                console.error('[ERROR] generateCumulativeQuiz failed:', error);
+                log(`❌ Failed to generate cumulative quiz: ${error.message}`, 'error');
             }
         }
 
