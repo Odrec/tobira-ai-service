@@ -656,6 +656,7 @@ app.put('/api/quizzes/:eventId', async (req: Request, res: Response) => {
       message: error.message,
     });
   }
+});
 
 // ========================================
 // Cumulative Quiz Endpoints (Phase 4)
@@ -751,7 +752,6 @@ app.get('/api/cumulative-quizzes/stats', async (req: Request, res: Response) => 
       message: error.message,
     });
   }
-});
 });
 
 // ========================================
