@@ -461,6 +461,7 @@
                 <button onclick="extractCaption()">Extract Caption</button>
                 <button onclick="generateSummary()">Generate Summary</button>
                 <button onclick="generateQuiz()">Generate Quiz</button>
+                <button onclick="generateCumulativeQuiz()" title="Generates a quiz covering all videos in the series up to this point">Generate Cumulative Quiz</button>
             </div>
 
             <div class="button-group">
@@ -477,6 +478,7 @@
                     <button class="button-warning" onclick="deleteTranscript()">Delete Transcript</button>
                     <button class="button-warning" onclick="deleteSummary()">Delete Summary</button>
                     <button class="button-warning" onclick="deleteQuiz()">Delete Quiz</button>
+                    <button class="button-warning" onclick="deleteCumulativeQuiz()">Delete Cumulative Quiz</button>
                 </div>
             </div>
 
@@ -870,6 +872,21 @@
             }
         }
 
+        async function generateCumulativeQuiz() {
+            const eventId = document.getElementById('eventId').value;
+            const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
+            
+            log(`Generating cumulative quiz for ${eventInfo}...`, 'info');
+            try {
+                const result = await postAPI(`/api/cumulative-quizzes/generate/${eventId}`, { language });
+                log(`✓ Cumulative quiz generated for ${eventInfo}: ${result.videoCount} videos, ${result.questionCount} questions`, 'success');
+                await refreshVideoData(eventId);
+            } catch (error) {
+                // Error already logged
+            }
+        }
+
         async function enqueueSummary() {
             const eventId = document.getElementById('eventId').value;
             const language = document.getElementById('language').value;
@@ -980,6 +997,34 @@
             log(`Deleting quiz for ${eventInfo}...`, 'info');
             try {
                 const response = await fetch(`${API_BASE}/api/quizzes/${eventId}?language=${language}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                log(`✓ ${result.message} for ${eventInfo}`, 'success');
+                await refreshVideoData(eventId);
+            } catch (error) {
+                log(`✗ Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteCumulativeQuiz() {
+            const eventId = document.getElementById('eventId').value;
+            const language = document.getElementById('language').value;
+            const eventInfo = formatEventInfo(eventId);
+            
+            if (!confirm(`Are you sure you want to delete the cumulative quiz for ${eventInfo} (${language})?`)) {
+                return;
+            }
+            
+            log(`Deleting cumulative quiz for ${eventInfo}...`, 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/cumulative-quizzes/${eventId}?language=${language}`, {
                     method: 'DELETE'
                 });
                 

@@ -753,6 +753,40 @@ app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) 
     });
   }
 });
+// Delete cumulative quiz
+app.delete('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    const language = normalizeLanguageCode(req.query.language as string || 'en');
+    
+    const result = await db.query(
+      'DELETE FROM ai_cumulative_quizzes WHERE event_id = $1 AND language = $2 RETURNING id',
+      [eventId, language]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cumulative quiz not found',
+        eventId,
+        language,
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Cumulative quiz deleted successfully',
+      eventId,
+      language,
+    });
+  } catch (error: any) {
+    console.error('Delete cumulative quiz error:', error);
+    res.status(500).json({
+      error: 'Failed to delete cumulative quiz',
+      message: error.message,
+    });
+  }
+});
+
 
 // ========================================
 // Caption Extraction Endpoints (Phase 2)
