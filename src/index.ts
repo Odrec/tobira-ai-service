@@ -705,6 +705,20 @@ app.post('/api/cumulative-quizzes/generate/:eventId', async (req: Request, res: 
   }
 });
 
+// Get cumulative quiz statistics (must come before /:eventId route)
+app.get('/api/cumulative-quizzes/stats', async (req: Request, res: Response) => {
+  try {
+    const stats = await cumulativeQuizService.getStats();
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Cumulative quiz stats error:', error);
+    res.status(500).json({
+      error: 'Failed to get cumulative quiz stats',
+      message: error.message,
+    });
+  }
+});
+
 // Get cumulative quiz for an event
 app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) => {
   try {
@@ -735,20 +749,6 @@ app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) 
     console.error('Get cumulative quiz error:', error);
     res.status(500).json({
       error: 'Failed to retrieve cumulative quiz',
-      message: error.message,
-    });
-  }
-});
-
-// Get cumulative quiz statistics
-app.get('/api/cumulative-quizzes/stats', async (req: Request, res: Response) => {
-  try {
-    const stats = await cumulativeQuizService.getStats();
-    res.json(stats);
-  } catch (error: any) {
-    console.error('Cumulative quiz stats error:', error);
-    res.status(500).json({
-      error: 'Failed to get cumulative quiz stats',
       message: error.message,
     });
   }
