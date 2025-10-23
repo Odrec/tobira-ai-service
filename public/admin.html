@@ -1459,7 +1459,8 @@
                 ...event.captionLanguages,
                 ...event.transcriptLanguages,
                 ...event.summaryLanguages,
-                ...event.quizLanguages
+                ...event.quizLanguages,
+                ...(event.cumulativeQuizLanguages || [])
             ]);
             
             if (allLangs.size === 0) {
@@ -1478,20 +1479,22 @@
                 const hasTranscript = event.transcriptLanguages.includes(lang);
                 const hasSummary = event.summaryLanguages.includes(lang);
                 const hasQuiz = event.quizLanguages.includes(lang);
+                const hasCumulativeQuiz = (event.cumulativeQuizLanguages || []).includes(lang);
                 
-                // Build status string: T=Transcript, S=Summary, Q=Quiz
+                // Build status string: T=Transcript, S=Summary, Q=Quiz, C=Cumulative Quiz
                 const statuses = [];
                 if (hasTranscript) statuses.push('T');
-                else if (hasCaption) statuses.push('C');
+                else if (hasCaption) statuses.push('Cap');
                 if (hasSummary) statuses.push('S');
                 if (hasQuiz) statuses.push('Q');
+                if (hasCumulativeQuiz) statuses.push('C');
                 
                 const statusStr = statuses.length > 0 ? ` [${statuses.join('')}]` : '';
                 option.textContent = `${lang.toUpperCase()}${statusStr}`;
                 langSelect.appendChild(option);
             });
             
-            langInfo.innerHTML = '<strong>Status:</strong> T=Transcript, C=Caption, S=Summary, Q=Quiz';
+            langInfo.innerHTML = '<strong>Status:</strong> T=Transcript, Cap=Caption, S=Summary, Q=Quiz, C=Cumulative';
         }
 
         // Render events in dropdown

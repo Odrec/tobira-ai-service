@@ -1069,18 +1069,24 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
          COALESCE(
            array_agg(DISTINCT q.language) FILTER (WHERE q.language IS NOT NULL),
            '{}'
-         ) as quiz_languages
+         ) as quiz_languages,
+         COALESCE(
+           array_agg(DISTINCT cq.language) FILTER (WHERE cq.language IS NOT NULL),
+           '{}'
+         ) as cumulative_quiz_languages
        FROM all_events e
        LEFT JOIN LATERAL unnest(e.captions) AS c ON true
        LEFT JOIN video_transcripts vt ON vt.event_id = e.id
        LEFT JOIN ai_summaries s ON s.event_id = e.id
        LEFT JOIN ai_quizzes q ON q.event_id = e.id
+       LEFT JOIN ai_cumulative_quizzes cq ON cq.event_id = e.id
        WHERE e.state = 'ready'
          AND (
            array_length(e.captions, 1) > 0
            OR vt.id IS NOT NULL
            OR s.id IS NOT NULL
            OR q.id IS NOT NULL
+           OR cq.id IS NOT NULL
          )
        GROUP BY e.id, e.title, e.created, e.series
        ORDER BY e.title`
@@ -1095,7 +1101,8 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
         captionLanguages: row.caption_languages || [],
         transcriptLanguages: row.transcript_languages || [],
         summaryLanguages: row.summary_languages || [],
-        quizLanguages: row.quiz_languages || []
+        quizLanguages: row.quiz_languages || [],
+        cumulativeQuizLanguages: row.cumulative_quiz_languages || []
       }))
     });
   } catch (error: any) {
