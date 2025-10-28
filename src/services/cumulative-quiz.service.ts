@@ -210,11 +210,21 @@ export class CumulativeQuizService {
       // Add each question with video context
       if (quiz.questions && Array.isArray(quiz.questions)) {
         quiz.questions.forEach((q: any) => {
+          // Handle both camelCase and snake_case field names
+          const correctAnswer = q.correctAnswer ?? q.correct_answer;
+          const questionType = q.questionType ?? q.type;
+          
+          // Skip questions without a correct answer
+          if (correctAnswer === undefined) {
+            console.warn(`Question missing correct_answer, skipping:`, q.question);
+            return;
+          }
+          
           combined.push({
             question: q.question,
-            questionType: q.questionType || q.type,
+            questionType: questionType,
             options: q.options,
-            correctAnswer: String(q.correctAnswer),
+            correctAnswer: String(correctAnswer),
             explanation: q.explanation,
             difficulty: q.difficulty,
             videoContext: {
