@@ -91,9 +91,30 @@ DATABASE_URL=postgresql://tobira:tobira@localhost:5432/tobira
 DEFAULT_MODEL=gpt-5
 ```
 
-### 3. Ensure Database Migrations Applied
+### 3. Apply Database Schema
 
-Make sure Tobira's database has the AI feature tables. The migrations should already be applied in your Tobira fork (migration `47-ai-features.sql`).
+**IMPORTANT:** The database tables are **NOT** created automatically. You must run the schema file manually:
+
+```bash
+# From the tobira-ai-service directory
+psql -U tobira -d tobira -h localhost -f schema.sql
+```
+
+Or if you're on the server:
+```bash
+ssh user@your-server
+cd /path/to/tobira-ai-service
+psql -U tobira -d tobira -f schema.sql
+```
+
+This creates the following tables:
+- `ai_config` - Configuration for AI features
+- `video_transcripts` - Video transcript storage
+- `ai_summaries` - Generated summaries
+- `ai_quizzes` - Generated quizzes
+- `ai_cumulative_quizzes` - Cumulative series quizzes (Phase 3)
+
+**Already deployed and getting errors?** See [`DEPLOYMENT.md`](DEPLOYMENT.md) for troubleshooting and the [`fix-missing-table.sql`](fix-missing-table.sql) script for quick fixes.
 
 ### 4. Start the Service
 
