@@ -371,6 +371,61 @@
             font-size: 12px;
             color: #666;
         }
+
+        /* Toggle Switch Styles */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #27ae60;
+        }
+
+        input:disabled + .toggle-slider {
+            background-color: #e0e0e0;
+            cursor: not-allowed;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        input:disabled + .toggle-slider:before {
+            background-color: #ccc;
+        }
     </style>
 </head>
 <body>
@@ -390,7 +445,7 @@
             </div>
 
             <div class="card">
-                <h2>Features</h2>
+                <h2>Feature Toggles</h2>
                 <div id="features-status" class="loading">
                     <div class="spinner"></div> Loading...
                 </div>
@@ -459,14 +514,14 @@
 
             <div class="button-group">
                 <button onclick="extractCaption()">Extract Caption</button>
-                <button onclick="generateSummary()">Generate Summary</button>
-                <button onclick="generateQuiz()">Generate Quiz</button>
-                <button onclick="generateCumulativeQuiz()" title="Generates a quiz covering all videos in the series up to this point">Generate Cumulative Quiz</button>
+                <button id="btn-generate-summary" onclick="generateSummary()">Generate Summary</button>
+                <button id="btn-generate-quiz" onclick="generateQuiz()">Generate Quiz</button>
+                <button id="btn-generate-cumulative-quiz" onclick="generateCumulativeQuiz()" title="Generates a quiz covering all videos in the series up to this point">Generate Cumulative Quiz</button>
             </div>
 
             <div class="button-group">
-                <button onclick="enqueueSummary()">Queue Summary</button>
-                <button onclick="enqueueQuiz()">Queue Quiz</button>
+                <button id="btn-queue-summary" onclick="enqueueSummary()">Queue Summary</button>
+                <button id="btn-queue-quiz" onclick="enqueueQuiz()">Queue Quiz</button>
                 <button onclick="batchExtractCaptions()">Batch Extract (10 events)</button>
             </div>
 
@@ -634,30 +689,168 @@
             }
         }
 
-        async function loadFeatures() {
+        let isTogglingFeature = false;
+        let featuresInitialized = false;
+
+        async function loadFeatures(forceRebuild = false) {
+            if (isTogglingFeature) return; // Skip refresh during toggle operation
+            
             try {
-                const data = await fetchAPI('/status');
-                const html = `
-                    <div class="stat">
-                        <span class="stat-label">AI Features</span>
-                        <span class="stat-value">${data.features.enabled ? 'Enabled' : 'Disabled'}</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Summaries</span>
-                        <span class="stat-value">${data.features.summary ? 'Active' : 'Inactive'}</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Quizzes</span>
-                        <span class="stat-value">${data.features.quiz ? 'Active' : 'Inactive'}</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Default Model</span>
-                        <span class="stat-value">${data.config.defaultModel}</span>
-                    </div>
-                `;
-                document.getElementById('features-status').innerHTML = html;
+                const data = await fetchAPI('/api/admin/features');
+                
+                // Only rebuild HTML on first load or when forced
+                if (!featuresInitialized || forceRebuild) {
+                    const html = `
+                        <div class="stat" style="flex-direction: column; align-items: flex-start; padding: 15px 0;">
+                            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                <span class="stat-label" style="font-size: 16px;">
+                                    🎛️ Master Switch (All AI Features)
+                                </span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="toggle-master" ${data.masterSwitch ? 'checked' : ''} onchange="toggleFeature('features_enabled', this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                Enable or disable all AI features (summaries, quizzes, etc.)
+                            </div>
+                        </div>
+                        <div id="summary-toggle-container" class="stat" style="flex-direction: column; align-items: flex-start; padding: 15px 0; opacity: ${data.masterSwitch ? '1' : '0.5'};">
+                            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                <span class="stat-label">
+                                    📝 Summary Generation
+                                </span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="toggle-summary" ${data.summary ? 'checked' : ''} ${!data.masterSwitch ? 'disabled' : ''} onchange="toggleFeature('summary_enabled', this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                Allow AI-powered video summaries
+                            </div>
+                        </div>
+                        <div id="quiz-toggle-container" class="stat" style="flex-direction: column; align-items: flex-start; padding: 15px 0; opacity: ${data.masterSwitch ? '1' : '0.5'};">
+                            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                <span class="stat-label">
+                                    ❓ Quiz Generation
+                                </span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="toggle-quiz" ${data.quiz ? 'checked' : ''} ${!data.masterSwitch ? 'disabled' : ''} onchange="toggleFeature('quiz_enabled', this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                Allow AI-powered quiz creation from videos
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById('features-status').innerHTML = html;
+                    featuresInitialized = true;
+                } else {
+                    // Just update the toggle states without rebuilding HTML
+                    const masterToggle = document.getElementById('toggle-master');
+                    const summaryToggle = document.getElementById('toggle-summary');
+                    const quizToggle = document.getElementById('toggle-quiz');
+                    const summaryContainer = document.getElementById('summary-toggle-container');
+                    const quizContainer = document.getElementById('quiz-toggle-container');
+                    
+                    if (masterToggle) masterToggle.checked = data.masterSwitch;
+                    if (summaryToggle) {
+                        // When master switch is off, uncheck summary toggle
+                        summaryToggle.checked = data.masterSwitch ? data.summary : false;
+                        summaryToggle.disabled = !data.masterSwitch;
+                    }
+                    if (quizToggle) {
+                        // When master switch is off, uncheck quiz toggle
+                        quizToggle.checked = data.masterSwitch ? data.quiz : false;
+                        quizToggle.disabled = !data.masterSwitch;
+                    }
+                    if (summaryContainer) {
+                        summaryContainer.style.opacity = data.masterSwitch ? '1' : '0.5';
+                    }
+                    if (quizContainer) {
+                        quizContainer.style.opacity = data.masterSwitch ? '1' : '0.5';
+                    }
+                }
+                
+                // Update button states based on feature toggles
+                updateButtonStates(data);
             } catch (error) {
                 document.getElementById('features-status').innerHTML = '<p style="color: #e74c3c;">Failed to load</p>';
+            }
+        }
+
+        function updateButtonStates(features) {
+            // Use setTimeout to ensure DOM elements are ready
+            setTimeout(() => {
+                // Summary buttons
+                const summaryButtons = [
+                    'btn-generate-summary',
+                    'btn-queue-summary'
+                ];
+                
+                summaryButtons.forEach(btnId => {
+                    const btn = document.getElementById(btnId);
+                    if (btn) {
+                        btn.disabled = !features.summary;
+                        btn.title = !features.summary ? 'Summary generation is disabled. Enable it in Feature Toggles.' : '';
+                        // Debug log
+                        console.log(`Button ${btnId}: disabled=${btn.disabled}`);
+                    } else {
+                        console.warn(`Button ${btnId} not found`);
+                    }
+                });
+                
+                // Quiz buttons
+                const quizButtons = [
+                    'btn-generate-quiz',
+                    'btn-queue-quiz',
+                    'btn-generate-cumulative-quiz'
+                ];
+                
+                quizButtons.forEach(btnId => {
+                    const btn = document.getElementById(btnId);
+                    if (btn) {
+                        btn.disabled = !features.quiz;
+                        btn.title = !features.quiz ? 'Quiz generation is disabled. Enable it in Feature Toggles.' :
+                                    (btnId === 'btn-generate-cumulative-quiz' ? 'Generates a quiz covering all videos in the series up to this point' : '');
+                        // Debug log
+                        console.log(`Button ${btnId}: disabled=${btn.disabled}`);
+                    } else {
+                        console.warn(`Button ${btnId} not found`);
+                    }
+                });
+            }, 50);
+        }
+
+        async function toggleFeature(feature, enabled) {
+            try {
+                isTogglingFeature = true;
+                log(`${enabled ? 'Enabling' : 'Disabling'} ${feature}...`, 'info');
+                
+                const response = await fetch('http://localhost:3001/api/admin/features', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feature, enabled })
+                });
+                
+                if (!response.ok) throw new Error('Failed to update feature');
+                
+                const result = await response.json();
+                log(`✓ ${result.message}`, 'success');
+                
+                // Wait a moment for database to update, then reload
+                setTimeout(async () => {
+                    await loadFeatures(true); // Force rebuild to sync with database
+                    isTogglingFeature = false;
+                }, 100);
+            } catch (error) {
+                log(`✗ Failed to toggle ${feature}: ${error.message}`, 'error');
+                // Reload to reset toggle state
+                setTimeout(async () => {
+                    await loadFeatures(true);
+                    isTogglingFeature = false;
+                }, 100);
             }
         }
 
@@ -1701,7 +1894,7 @@
             await loadEvents();
             await Promise.all([
                 loadHealth(),
-                loadFeatures(),
+                loadFeatures(true), // Force initial build
                 loadCacheStats(),
                 loadQueueStats(),
                 loadCaptionStats(),

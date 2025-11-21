@@ -83,12 +83,13 @@ app.get('/health', async (req: Request, res: Response) => {
 app.get('/status', async (req: Request, res: Response) => {
   try {
     const featuresEnabled = await db.isFeatureEnabled();
-    const quizEnabled = await db.getConfig('quiz_enabled');
+    const summaryEnabled = await db.isSummaryEnabled();
+    const quizEnabled = await db.isQuizEnabled();
     
     res.json({
       features: {
         enabled: featuresEnabled,
-        summary: featuresEnabled,
+        summary: summaryEnabled,
         quiz: quizEnabled,
         captionExtraction: true,
       },
@@ -100,6 +101,55 @@ app.get('/status', async (req: Request, res: Response) => {
       cache: cache.getStats(),
     });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get feature toggles (for admin dashboard)
+app.get('/api/admin/features', async (req: Request, res: Response) => {
+  try {
+    const featuresEnabled = await db.isFeatureEnabled();
+    const summaryEnabled = await db.isSummaryEnabled();
+    const quizEnabled = await db.isQuizEnabled();
+    
+    res.json({
+      masterSwitch: featuresEnabled,
+      summary: summaryEnabled,
+      quiz: quizEnabled,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update feature toggles (for admin dashboard)
+app.put('/api/admin/features', async (req: Request, res: Response) => {
+  try {
+    const { feature, enabled } = req.body;
+    
+    if (!feature || enabled === undefined) {
+      return res.status(400).json({
+        error: 'Missing required fields: feature and enabled'
+      });
+    }
+    
+    const validFeatures = ['features_enabled', 'summary_enabled', 'quiz_enabled'];
+    if (!validFeatures.includes(feature)) {
+      return res.status(400).json({
+        error: 'Invalid feature. Must be one of: ' + validFeatures.join(', ')
+      });
+    }
+    
+    await db.setConfig(feature, enabled);
+    
+    res.json({
+      success: true,
+      message: `Feature ${feature} ${enabled ? 'enabled' : 'disabled'}`,
+      feature,
+      enabled,
+    });
+  } catch (error: any) {
+    console.error('Update feature toggle error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -216,12 +266,12 @@ app.post('/api/summaries/generate/:eventId', async (req: Request, res: Response)
     const language = normalizeLanguageCode(req.body.language);
     const forceRegenerate = req.body.forceRegenerate === true;
 
-    // Check if features are enabled
-    const enabled = await db.isFeatureEnabled();
+    // Check if summary feature is enabled
+    const enabled = await db.isSummaryEnabled();
     if (!enabled) {
-      return res.status(403).json({ 
-        error: 'AI features are disabled',
-        message: 'Contact administrator to enable AI features',
+      return res.status(403).json({
+        error: 'Summary feature is disabled',
+        message: 'Contact administrator to enable summary generation',
       });
     }
 
@@ -444,11 +494,11 @@ app.post('/api/quizzes/generate/:eventId', async (req: Request, res: Response) =
     const forceRegenerate = req.body.forceRegenerate === true;
 
     // Check if quiz feature is enabled
-    const quizEnabled = await db.getConfig('quiz_enabled');
+    const quizEnabled = await db.isQuizEnabled();
     if (!quizEnabled) {
       return res.status(403).json({
         error: 'Quiz feature is disabled',
-        message: 'Enable quiz_enabled in ai_config to use this feature',
+        message: 'Contact administrator to enable quiz generation',
       });
     }
 

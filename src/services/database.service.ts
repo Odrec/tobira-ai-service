@@ -184,7 +184,7 @@ class DatabaseService {
   }
 
   /**
-   * Check if AI features are enabled
+   * Check if AI features are enabled (master switch)
    */
   async isFeatureEnabled(): Promise<boolean> {
     try {
@@ -195,6 +195,55 @@ class DatabaseService {
       // Fall back to environment variable
       return config.features.enabled;
     }
+  }
+
+  /**
+   * Check if summary generation is enabled
+   */
+  async isSummaryEnabled(): Promise<boolean> {
+    try {
+      const masterEnabled = await this.isFeatureEnabled();
+      if (!masterEnabled) return false;
+      
+      const summaryEnabled = await this.getConfig('summary_enabled');
+      // Default to true if not set
+      return summaryEnabled === true || summaryEnabled === 'true' || summaryEnabled === undefined || summaryEnabled === null;
+    } catch (error) {
+      console.error('Error checking summary feature flag:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if quiz generation is enabled
+   */
+  async isQuizEnabled(): Promise<boolean> {
+    try {
+      const masterEnabled = await this.isFeatureEnabled();
+      if (!masterEnabled) return false;
+      
+      const quizEnabled = await this.getConfig('quiz_enabled');
+      // Default to true if not set
+      return quizEnabled === true || quizEnabled === 'true' || quizEnabled === undefined || quizEnabled === null;
+    } catch (error) {
+      console.error('Error checking quiz feature flag:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update configuration value in database
+   */
+  async setConfig(key: string, value: any): Promise<void> {
+    await this.query(
+      `INSERT INTO ai_config (key, value, description, updated_at)
+       VALUES ($1, $2, '', NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET
+         value = EXCLUDED.value,
+         updated_at = NOW()`,
+      [key, value]
+    );
   }
 
   /**
