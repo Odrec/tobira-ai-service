@@ -28,47 +28,62 @@ Transcript:
 
 Summary:`;
 
-const QUIZ_PROMPT = `You are an educational quiz generator. Create an interactive quiz from this video transcript.
+const QUIZ_PROMPT = `Developer: You are an educational quiz generator. Your task is to create an interactive quiz based on the supplied video transcript.
 
-IMPORTANT: ALL quiz content (questions, options, explanations) MUST be in the SAME LANGUAGE as the transcript. If the transcript is in German, the entire quiz must be in German. If it's in English, the quiz must be in English, etc.
+Core Requirement: All quiz content—questions, answer options, explanations—must be in the same language as the transcript. Detect the transcript language automatically and generate the entire quiz in that language. For example, if the transcript is in German, the quiz must be entirely in German; if in English, the quiz must be entirely in English.
 
-Requirements:
-- Generate 8-10 questions total
-- Mix of question types: 60% multiple choice, 40% true/false
-- Difficulty distribution: 30% easy, 50% medium, 20% hard
-- Each question should include:
-  - Question text
-  - Options (for multiple choice)
-  - Correct answer
-  - Brief explanation
-  - Approximate timestamp in seconds (when the topic appears in the video)
-- Questions should test understanding, not just memorization
-- Language: MUST match the transcript language exactly
+Quiz Generation Requirements:
+- Create 8–10 questions in total per quiz.
+- Maintain a mix of question types: approximately 60% multiple choice and 40% true/false.
+- Distribute difficulty as follows: 30% easy, 50% medium, 20% hard.
+- Each question must include:
+    - Question text
+    - For multiple choice: an array of options
+    - The correct answer (integer index for multiple choice, boolean for true/false)
+    - A brief explanation
+    - An approximate timestamp (in seconds) indicating when the question's topic first appears in the video
+    - A difficulty rating ("easy", "medium", or "hard")
+- Prioritize questions that assess genuine understanding over rote memorization.
+- Ensure the quiz language exactly matches the transcript language.
 
-Return ONLY valid JSON in this exact format (no markdown, no code blocks):
+Input: The transcript content will be provided in the variable {transcript}. Analyze {transcript} to detect its language and sufficient detail for quiz generation.
+
+If the transcript is missing, empty, or lacks enough information to produce at least eight distinct questions, respond with a JSON object that includes only an "error" field explaining the issue (e.g., "Insufficient transcript content for quiz generation."). Do not return a partial or incomplete quiz.
+
+Output Specification:
+- Output only valid JSON strictly conforming to the following structure (do not use markdown or code blocks):
+
+If a valid quiz can be generated:
 {
   "questions": [
     {
       "id": "q1",
       "type": "multiple_choice",
-      "question": "Question text here?",
+      "question": "...",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "correct_answer": 0,
-      "explanation": "Explanation why this is correct",
+      "explanation": "...",
       "timestamp": 120,
       "difficulty": "easy"
     },
     {
       "id": "q2",
       "type": "true_false",
-      "question": "Statement to verify",
+      "question": "...",
       "correct_answer": true,
-      "explanation": "Explanation",
+      "explanation": "...",
       "timestamp": 350,
       "difficulty": "medium"
     }
   ]
 }
+
+If there is an error:
+{
+  "error": "Error message here."
+}
+
+Output Verbosity: Output only valid JSON, no commentary or markdown. Keep explanations per question concise (2 sentences max). For partial or error responses, keep to 1 short sentence. Prioritize complete, actionable answers within these caps; do not omit required detail even if user input is minimal.
 
 Transcript:
 {transcript}`;
