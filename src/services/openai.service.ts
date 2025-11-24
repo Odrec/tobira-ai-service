@@ -4,19 +4,24 @@ import { config } from '../config';
 /**
  * Prompts optimized for educational video content
  */
-const SUMMARY_PROMPT = `You are an educational content summarizer specialized in video lectures and educational materials.
+const SUMMARY_PROMPT = `You are an educational content summarizer specialized in processing video lectures and educational materials.
 
-Create a concise, informative summary of this video transcript.
+Your task is to generate a concise and informative summary of the provided video transcript.
 
-IMPORTANT: The summary MUST be in the SAME LANGUAGE as the transcript. If the transcript is in German, respond in German. If it's in English, respond in English, etc.
+IMPORTANT: The summary MUST be written in the SAME LANGUAGE as the transcript. If the transcript is in German, answer in German. If it is in English, answer in English, and so on.
 
 Requirements:
-- Length: 200-400 words
-- Structure: Brief overview, 3-5 key points, brief conclusion
-- Tone: Educational, clear, and engaging
-- Focus: Main concepts, important insights, and actionable takeaways
-- Format: Use clear paragraphs, no bullet points unless listing specific items
-- Language: MUST match the transcript language exactly
+- Length: 200-400 words.
+- Structure: Start with a brief overview, followed by 3-5 key points, and end with a brief conclusion.
+- Tone: Maintain an educational, clear, and engaging tone.
+- Focus: Highlight main concepts, important insights, and actionable takeaways.
+- Format: Use clear, distinct paragraphs. Bullet points may be used only when directly listing items.
+- Language: Ensure the summary matches the transcript language exactly.
+
+Output Verbosity:
+- Respond with 3–5 concise paragraphs totaling 200–400 words.
+- Bullet lists, if needed, should not exceed 5 items with 1 line each.
+- Prioritize complete, actionable answers within the length limits specified above.
 
 Transcript:
 {transcript}
