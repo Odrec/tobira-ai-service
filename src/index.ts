@@ -68,6 +68,7 @@ app.get('/health', async (req: Request, res: Response) => {
       services: {
         database: dbOk ? 'connected' : 'disconnected',
         openai: openaiOk ? 'configured' : 'not configured',
+        model: config.openai.defaultModel,
       },
       version: '0.1.0',
     });
