@@ -46,7 +46,7 @@ function getEnvVarAsBoolean(key: string, defaultValue: boolean): boolean {
 export const config: Config = {
   openai: {
     apiKey: getEnvVar('OPENAI_API_KEY'),
-    defaultModel: getEnvVar('DEFAULT_MODEL', 'gpt-5'),
+    defaultModel: getEnvVar('DEFAULT_MODEL', 'gpt-5.1'),
   },
   database: {
     url: getEnvVar('DATABASE_URL'),

@@ -101,6 +101,13 @@ class OpenAIService {
   }
 
   /**
+   * Check if model uses the new responses API (GPT-5.1)
+   */
+  private isResponsesApiModel(model: string): boolean {
+    return model.startsWith('gpt-5');
+  }
+
+  /**
    * Generate AI summary of video transcript
    */
   async generateSummary(transcript: string, model?: string): Promise<GenerationResult> {
@@ -119,30 +126,49 @@ class OpenAIService {
     const prompt = SUMMARY_PROMPT.replace('{transcript}', transcript);
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: useModel,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert educational content summarizer.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 1,
-        max_completion_tokens: 600,
-      });
+      let summary: string;
+      let tokensUsed: number | undefined;
 
-      const summary = response.choices[0].message.content?.trim() || '';
+      // Use new responses API for GPT-5.1 models
+      if (this.isResponsesApiModel(useModel)) {
+        const result = await this.client.responses.create({
+          model: useModel,
+          input: prompt,
+          reasoning: { effort: 'medium' },
+          text: { verbosity: 'medium' } as any, // Type assertion for SDK compatibility
+        } as any);
+
+        summary = result.output_text?.trim() || '';
+        tokensUsed = undefined; // responses API doesn't provide token usage in the same way
+      } else {
+        // Fallback to chat completions API for older models
+        const response = await this.client.chat.completions.create({
+          model: useModel,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert educational content summarizer.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 1,
+          max_completion_tokens: 600,
+        });
+
+        summary = response.choices[0].message.content?.trim() || '';
+        tokensUsed = response.usage?.total_tokens;
+      }
+
       const processingTime = Date.now() - startTime;
 
       return {
         content: summary,
         model: useModel,
         processingTime,
-        tokensUsed: response.usage?.total_tokens,
+        tokensUsed,
       };
     } catch (error: any) {
       console.error('OpenAI API error:', error);
@@ -168,23 +194,38 @@ class OpenAIService {
     const prompt = QUIZ_PROMPT.replace('{transcript}', transcript);
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: useModel,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert educational quiz generator. Return only valid JSON.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 1,
-        max_completion_tokens: 2500,
-      });
+      let content: string;
 
-      const content = response.choices[0].message.content?.trim() || '{}';
+      // Use new responses API for GPT-5.1 models
+      if (this.isResponsesApiModel(useModel)) {
+        const result = await this.client.responses.create({
+          model: useModel,
+          input: prompt,
+          reasoning: { effort: 'medium' },
+          text: { verbosity: 'medium' } as any, // Type assertion for SDK compatibility
+        } as any);
+
+        content = result.output_text?.trim() || '{}';
+      } else {
+        // Fallback to chat completions API for older models
+        const response = await this.client.chat.completions.create({
+          model: useModel,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert educational quiz generator. Return only valid JSON.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 1,
+          max_completion_tokens: 2500,
+        });
+
+        content = response.choices[0].message.content?.trim() || '{}';
+      }
       
       // Clean up potential markdown code blocks
       const jsonContent = content
