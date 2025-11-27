@@ -175,9 +175,9 @@ app.post('/api/transcripts/upload', async (req: Request, res: Response) => {
 
     const language = normalizeLanguageCode(req.body.language);
 
-    if (content.length > 50000) {
-      return res.status(400).json({ 
-        error: 'Transcript too long (max 50,000 characters)' 
+    if (content.length > config.openai.maxTranscriptLength) {
+      return res.status(400).json({
+        error: `Transcript too long (max ${config.openai.maxTranscriptLength.toLocaleString()} characters)`
       });
     }
 

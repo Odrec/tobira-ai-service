@@ -139,8 +139,8 @@ class OpenAIService {
       throw new Error('Transcript is empty');
     }
 
-    if (transcript.length > 50000) {
-      throw new Error('Transcript too long (max 50,000 characters)');
+    if (transcript.length > config.openai.maxTranscriptLength) {
+      throw new Error(`Transcript too long (max ${config.openai.maxTranscriptLength.toLocaleString()} characters)`);
     }
 
     const prompt = SUMMARY_PROMPT.replace('{transcript}', transcript);

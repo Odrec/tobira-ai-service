@@ -6,6 +6,7 @@ interface Config {
   openai: {
     apiKey: string;
     defaultModel: string;
+    maxTranscriptLength: number;
   };
   database: {
     url: string;
@@ -47,6 +48,7 @@ export const config: Config = {
   openai: {
     apiKey: getEnvVar('OPENAI_API_KEY'),
     defaultModel: getEnvVar('DEFAULT_MODEL', 'gpt-5.1'),
+    maxTranscriptLength: getEnvVarAsNumber('MAX_TRANSCRIPT_LENGTH', 1600000),
   },
   database: {
     url: getEnvVar('DATABASE_URL'),
