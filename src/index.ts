@@ -1117,6 +1117,7 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
          e.opencast_id,
          e.title,
          e.created,
+         e.start_time,
          e.series,
          ser.title as series_title,
          COALESCE(
@@ -1154,7 +1155,7 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
            OR q.id IS NOT NULL
            OR cq.id IS NOT NULL
          )
-       GROUP BY e.id, e.opencast_id, e.title, e.created, e.series, ser.title
+       GROUP BY e.id, e.opencast_id, e.title, e.created, e.start_time, e.series, ser.title
        ORDER BY e.title`
     );
     
@@ -1164,6 +1165,7 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
         opencastId: row.opencast_id,
         title: row.title || `Event ${row.id}`,
         created: row.created,
+        startTime: row.start_time,
         series: row.series?.toString() || null,
         seriesTitle: row.series_title || null,
         captionLanguages: row.caption_languages || [],
