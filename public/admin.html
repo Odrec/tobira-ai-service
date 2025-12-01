@@ -1033,26 +1033,29 @@
             return title ? `"${title}" (ID: ${eventId})` : `event ${eventId}`;
         }
 
-        // Tobira Base64 URL-safe encoding for event IDs
-        // Converts a BigInt ID to Tobira's URL format
+        // Tobira custom base64 URL-safe encoding for event IDs
+        // Converts a database BigInt ID to Tobira's 11-character URL format
         function encodeIdForTobira(idStr) {
-            // Tobira uses base64url encoding of the 8-byte big-endian representation of the ID
+            // Tobira uses a custom base64 encoding: divide by 64 repeatedly, use remainder as index
+            // The ID is stored as i64 in database but treated as u64 for encoding
+            const BASE64_DIGITS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+            
             try {
-                const id = BigInt(idStr);
-                // Convert to 8-byte big-endian buffer
-                const buffer = new ArrayBuffer(8);
-                const view = new DataView(buffer);
-                // BigInt to bytes (big-endian)
-                view.setBigInt64(0, id, false);
-                // Convert to base64url
-                const bytes = new Uint8Array(buffer);
-                let binary = '';
-                bytes.forEach(b => binary += String.fromCharCode(b));
-                // Base64 encode and make URL-safe
-                return btoa(binary)
-                    .replace(/\+/g, '-')
-                    .replace(/\//g, '_')
-                    .replace(/=+$/, '');
+                let n = BigInt(idStr);
+                
+                // Convert signed i64 to unsigned u64 if negative
+                if (n < 0n) {
+                    n = n + 18446744073709551616n; // Add 2^64
+                }
+                
+                // Encode to 11 characters (covers all u64 values)
+                let out = '';
+                for (let i = 0; i < 11; i++) {
+                    out = BASE64_DIGITS[Number(n % 64n)] + out;
+                    n = n / 64n;
+                }
+                
+                return out;
             } catch (e) {
                 console.error('Error encoding ID:', e);
                 return null;
