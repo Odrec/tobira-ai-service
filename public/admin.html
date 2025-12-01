@@ -497,11 +497,26 @@
             
             <div class="form-group">
                 <label>Search & Select Video:</label>
-                <input type="text" id="eventSearch" placeholder="Type to search videos..." style="width: 100%; max-width: 500px; margin-bottom: 10px;" oninput="filterVideos()">
-                <select id="eventId" size="8" style="width: 100%; max-width: 500px;">
-                    <option value="">Loading videos...</option>
-                </select>
-                <div id="videoCount" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                <input type="text" id="eventSearch" placeholder="Type to search videos..." style="width: 100%; margin-bottom: 10px;" oninput="filterVideos()">
+                
+                <!-- Table-like video list for better readability -->
+                <div id="videoTableContainer" style="border: 1px solid #ddd; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                    <table id="videoTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead style="position: sticky; top: 0; background: #f5f5f5; z-index: 1;">
+                            <tr>
+                                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd; width: 50%;">Video Title</th>
+                                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd; width: 30%;">Series</th>
+                                <th style="padding: 8px; text-align: center; border-bottom: 2px solid #ddd; width: 20%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="videoTableBody">
+                            <tr><td colspan="3" style="padding: 20px; text-align: center; color: #666;">Loading videos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Hidden select for compatibility with existing code -->
+                <select id="eventId" style="display: none;"></select>
+                <div id="videoCount" style="font-size: 12px; color: #666; margin-top: 8px;"></div>
             </div>
 
             <div class="form-group">
@@ -512,7 +527,20 @@
                 <div id="languageInfo" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
             </div>
 
-            <div class="button-group">
+            <div class="form-group" style="margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 3px solid #9b59b6;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">🔗 Open in Tobira</label>
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                    <input type="text" id="tobiraBaseUrl" style="flex: 1; max-width: 350px;" placeholder="Leave empty for same origin">
+                    <button onclick="openInTobira()" class="button-success" style="background: #9b59b6; margin: 0;">Open Video</button>
+                </div>
+                <div id="encodedIdDisplay" style="font-size: 12px; color: #666; margin-top: 8px; font-family: monospace; background: #fff; padding: 5px; border-radius: 3px;"></div>
+                <div style="font-size: 11px; color: #888; margin-top: 5px;">
+                    <strong>Note:</strong> Uses Tobira's <code>/!v/ID</code> shortcut format. In production this opens the video directly.
+                    <br>Local dev: Leave empty or enter your Tobira URL. Ensure both use the same database.
+                </div>
+            </div>
+    
+                <div class="button-group">
                 <button onclick="extractCaption()">Extract Caption</button>
                 <button id="btn-generate-summary" onclick="generateSummary()">Generate Summary</button>
                 <button id="btn-generate-quiz" onclick="generateQuiz()">Generate Quiz</button>
@@ -1003,6 +1031,80 @@
         function formatEventInfo(eventId) {
             const title = getSelectedVideoTitle();
             return title ? `"${title}" (ID: ${eventId})` : `event ${eventId}`;
+        }
+
+        // Tobira Base64 URL-safe encoding for event IDs
+        // Converts a BigInt ID to Tobira's URL format
+        function encodeIdForTobira(idStr) {
+            // Tobira uses base64url encoding of the 8-byte big-endian representation of the ID
+            try {
+                const id = BigInt(idStr);
+                // Convert to 8-byte big-endian buffer
+                const buffer = new ArrayBuffer(8);
+                const view = new DataView(buffer);
+                // BigInt to bytes (big-endian)
+                view.setBigInt64(0, id, false);
+                // Convert to base64url
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                bytes.forEach(b => binary += String.fromCharCode(b));
+                // Base64 encode and make URL-safe
+                return btoa(binary)
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=+$/, '');
+            } catch (e) {
+                console.error('Error encoding ID:', e);
+                return null;
+            }
+        }
+
+        // Open video in Tobira
+        function openInTobira() {
+            const select = document.getElementById('eventId');
+            const eventId = select.value;
+            
+            if (!eventId) {
+                log('Please select a video first', 'error');
+                return;
+            }
+            
+            const encodedId = encodeIdForTobira(eventId);
+            if (!encodedId) {
+                log('Failed to encode video ID for Tobira URL', 'error');
+                return;
+            }
+            
+            // Get the base URL from input field, or use current origin if empty
+            let baseUrl = document.getElementById('tobiraBaseUrl').value.trim();
+            if (!baseUrl) {
+                // Use the current page's origin (works in production)
+                baseUrl = window.location.origin;
+            }
+            baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
+            
+            const tobiraUrl = `${baseUrl}/!v/${encodedId}`;
+            
+            log(`Opening video in Tobira: ${tobiraUrl}`, 'info');
+            window.open(tobiraUrl, '_blank');
+        }
+        
+        // Update the encoded ID display when a video is selected
+        function updateEncodedIdDisplay() {
+            const eventId = document.getElementById('eventId').value;
+            const display = document.getElementById('encodedIdDisplay');
+            
+            if (!eventId) {
+                display.innerHTML = 'Select a video to see its encoded ID';
+                return;
+            }
+            
+            const encodedId = encodeIdForTobira(eventId);
+            if (encodedId) {
+                display.innerHTML = `<strong>Internal ID:</strong> ${eventId} → <strong>Encoded:</strong> ${encodedId} → <strong>Path:</strong> /!v/${encodedId}`;
+            } else {
+                display.innerHTML = 'Error encoding ID';
+            }
         }
 
         // Helper to refresh video data after changes
@@ -1710,25 +1812,105 @@
             langInfo.innerHTML = '<strong>Status:</strong> T=Transcript, Cap=Caption, S=Summary, Q=Quiz, C=Cumulative';
         }
 
-        // Render events in dropdown
+        // Render events in table with status indicators
         function renderEvents(events) {
+            const tbody = document.getElementById('videoTableBody');
             const select = document.getElementById('eventId');
+            
+            // Clear both table and hidden select
+            tbody.innerHTML = '';
             select.innerHTML = '';
             
-            events.forEach(event => {
+            if (events.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #666;">No videos found</td></tr>';
+                return;
+            }
+            
+            events.forEach((event, index) => {
+                // Build status indicators
+                const hasTranscript = event.transcriptLanguages && event.transcriptLanguages.length > 0;
+                const hasSummary = event.summaryLanguages && event.summaryLanguages.length > 0;
+                const hasQuiz = event.quizLanguages && event.quizLanguages.length > 0;
+                const hasCumulativeQuiz = event.cumulativeQuizLanguages && event.cumulativeQuizLanguages.length > 0;
+                
+                // Build status badges
+                const badges = [];
+                if (hasTranscript) badges.push('<span style="background:#17a2b8;color:white;padding:2px 6px;border-radius:3px;font-size:11px;margin:1px;">T</span>');
+                if (hasSummary) badges.push('<span style="background:#28a745;color:white;padding:2px 6px;border-radius:3px;font-size:11px;margin:1px;">S</span>');
+                if (hasQuiz) badges.push('<span style="background:#6f42c1;color:white;padding:2px 6px;border-radius:3px;font-size:11px;margin:1px;">Q</span>');
+                if (hasCumulativeQuiz) badges.push('<span style="background:#fd7e14;color:white;padding:2px 6px;border-radius:3px;font-size:11px;margin:1px;">C</span>');
+                if (badges.length === 0) badges.push('<span style="background:#6c757d;color:white;padding:2px 6px;border-radius:3px;font-size:11px;margin:1px;">Cap</span>');
+                
+                // Create table row
+                const row = document.createElement('tr');
+                row.style.cursor = 'pointer';
+                row.dataset.eventId = event.id;
+                row.dataset.index = index;
+                row.onclick = function() { selectVideo(event.id); };
+                row.onmouseover = function() { this.style.background = '#f0f7ff'; };
+                row.onmouseout = function() { if (!this.classList.contains('selected')) this.style.background = ''; };
+                
+                row.innerHTML = `
+                    <td style="padding: 8px; border-bottom: 1px solid #eee; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(event.title)}">
+                        ${escapeHtml(event.title)}
+                    </td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee; color: #666; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${event.seriesTitle || ''}">
+                        ${event.seriesTitle || '-'}
+                    </td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; white-space: nowrap;">
+                        ${badges.join(' ')}
+                    </td>
+                `;
+                tbody.appendChild(row);
+                
+                // Also add to hidden select for compatibility
                 const option = document.createElement('option');
                 option.value = event.id;
-                option.textContent = `${event.title}`;
-                option.title = `ID: ${event.id}`; // Show ID on hover
+                option.textContent = event.title;
+                option.dataset.opencastId = event.opencastId || '';
                 select.appendChild(option);
             });
             
-            document.getElementById('videoCount').textContent = `Showing ${events.length} of ${allEvents.length} videos`;
+            // Update count with legend
+            document.getElementById('videoCount').innerHTML = `
+                Showing ${events.length} of ${allEvents.length} videos
+                <span style="margin-left: 15px; font-size: 11px;">
+                    <span style="background:#17a2b8;color:white;padding:1px 4px;border-radius:2px;">T</span>=Transcript
+                    <span style="background:#28a745;color:white;padding:1px 4px;border-radius:2px;margin-left:5px;">S</span>=Summary
+                    <span style="background:#6f42c1;color:white;padding:1px 4px;border-radius:2px;margin-left:5px;">Q</span>=Quiz
+                    <span style="background:#fd7e14;color:white;padding:1px 4px;border-radius:2px;margin-left:5px;">C</span>=Cumulative
+                    <span style="background:#6c757d;color:white;padding:1px 4px;border-radius:2px;margin-left:5px;">Cap</span>=Caption only
+                </span>
+            `;
             
-            // Update language options for first video
+            // Select first video by default
             if (events.length > 0) {
-                updateLanguageOptions();
+                selectVideo(events[0].id);
             }
+        }
+        
+        // Select a video from the table
+        function selectVideo(eventId) {
+            // Update hidden select
+            document.getElementById('eventId').value = eventId;
+            
+            // Update table row highlighting
+            const rows = document.querySelectorAll('#videoTableBody tr');
+            rows.forEach(row => {
+                if (row.dataset.eventId === eventId) {
+                    row.classList.add('selected');
+                    row.style.background = '#e3f2fd';
+                } else {
+                    row.classList.remove('selected');
+                    row.style.background = '';
+                }
+            });
+            
+            // Update language options
+            updateLanguageOptions();
+            
+            // Update encoded ID display
+            updateEncodedIdDisplay();
         }
 
         // Filter videos based on search input

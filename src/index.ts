@@ -1114,9 +1114,11 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
     const result = await db.query(
       `SELECT DISTINCT
          e.id,
+         e.opencast_id,
          e.title,
          e.created,
          e.series,
+         ser.title as series_title,
          COALESCE(
            array_agg(DISTINCT c.lang) FILTER (WHERE c.lang IS NOT NULL),
            '{}'
@@ -1138,6 +1140,7 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
            '{}'
          ) as cumulative_quiz_languages
        FROM all_events e
+       LEFT JOIN all_series ser ON ser.id = e.series
        LEFT JOIN LATERAL unnest(e.captions) AS c ON true
        LEFT JOIN video_transcripts vt ON vt.event_id = e.id
        LEFT JOIN ai_summaries s ON s.event_id = e.id
@@ -1151,16 +1154,18 @@ app.get('/api/admin/events', async (req: Request, res: Response) => {
            OR q.id IS NOT NULL
            OR cq.id IS NOT NULL
          )
-       GROUP BY e.id, e.title, e.created, e.series
+       GROUP BY e.id, e.opencast_id, e.title, e.created, e.series, ser.title
        ORDER BY e.title`
     );
     
     res.json({
       events: result.rows.map((row: any) => ({
         id: row.id.toString(),
+        opencastId: row.opencast_id,
         title: row.title || `Event ${row.id}`,
         created: row.created,
-        series: row.series,
+        series: row.series?.toString() || null,
+        seriesTitle: row.series_title || null,
         captionLanguages: row.caption_languages || [],
         transcriptLanguages: row.transcript_languages || [],
         summaryLanguages: row.summary_languages || [],
