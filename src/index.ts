@@ -1148,9 +1148,14 @@ app.get('/api/admin/series', async (req: Request, res: Response) => {
          COUNT(DISTINCT e.id) as video_count,
          COUNT(DISTINCT vt.event_id) as videos_with_transcripts,
          COUNT(DISTINCT summ.event_id) as videos_with_summaries,
-         COUNT(DISTINCT q.event_id) as videos_with_quizzes
+         COUNT(DISTINCT q.event_id) as videos_with_quizzes,
+         COALESCE(
+           array_agg(DISTINCT c.lang) FILTER (WHERE c.lang IS NOT NULL),
+           '{}'
+         ) as available_languages
        FROM all_series s
        INNER JOIN all_events e ON e.series = s.id AND e.state = 'ready'
+       LEFT JOIN LATERAL unnest(e.captions) AS c ON true
        LEFT JOIN video_transcripts vt ON vt.event_id = e.id
        LEFT JOIN ai_summaries summ ON summ.event_id = e.id
        LEFT JOIN ai_quizzes q ON q.event_id = e.id
@@ -1166,7 +1171,8 @@ app.get('/api/admin/series', async (req: Request, res: Response) => {
         videoCount: parseInt(row.video_count),
         videosWithTranscripts: parseInt(row.videos_with_transcripts),
         videosWithSummaries: parseInt(row.videos_with_summaries),
-        videosWithQuizzes: parseInt(row.videos_with_quizzes)
+        videosWithQuizzes: parseInt(row.videos_with_quizzes),
+        availableLanguages: row.available_languages || []
       }))
     });
   } catch (error: any) {
