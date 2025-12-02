@@ -378,7 +378,7 @@ export class CumulativeQuizService {
    */
   async getStats(): Promise<any> {
     const query = `
-      SELECT 
+      SELECT
         COUNT(*) as total_quizzes,
         COUNT(DISTINCT series_id) as total_series,
         AVG(video_count) as avg_videos_per_quiz,
@@ -388,5 +388,184 @@ export class CumulativeQuizService {
     
     const result = await this.pool.query(query);
     return result.rows[0];
+  }
+
+  /**
+   * Check if cumulative quiz generation is allowed for an event.
+   * Requirements:
+   * 1. Event must be part of a series
+   * 2. Event must have a regular quiz for the specified language
+   * 3. At least one video that comes BEFORE this video in the series must also have a quiz
+   */
+  async checkEligibility(
+    eventId: string,
+    language: string
+  ): Promise<{
+    eligible: boolean;
+    reason: string;
+    details?: {
+      seriesId?: string;
+      seriesTitle?: string;
+      position?: number;
+      totalInSeries?: number;
+      previousVideosWithQuizzes?: number;
+      hasQuiz?: boolean;
+    };
+  }> {
+    try {
+      // Step 1: Check if event exists and is part of a series
+      const eventQuery = `
+        SELECT e.id, e.series, e.title, s.title as series_title
+        FROM all_events e
+        LEFT JOIN all_series s ON s.id = e.series
+        WHERE e.id = $1 AND e.state = 'ready'
+      `;
+      const eventResult = await this.pool.query(eventQuery, [eventId]);
+      
+      if (eventResult.rows.length === 0) {
+        return {
+          eligible: false,
+          reason: 'Event not found or not ready'
+        };
+      }
+      
+      const event = eventResult.rows[0];
+      
+      if (!event.series) {
+        return {
+          eligible: false,
+          reason: 'This video is not part of a series. Cumulative quizzes require a video series.'
+        };
+      }
+      
+      const seriesId = event.series;
+      
+      // Step 2: Check if this video has a quiz for the specified language
+      const quizQuery = `
+        SELECT id FROM ai_quizzes
+        WHERE event_id = $1 AND language = $2
+      `;
+      const quizResult = await this.pool.query(quizQuery, [eventId, language]);
+      const hasQuiz = quizResult.rows.length > 0;
+      
+      if (!hasQuiz) {
+        return {
+          eligible: false,
+          reason: 'Generate a regular quiz for this video first before creating a cumulative quiz.',
+          details: {
+            seriesId: seriesId.toString(),
+            seriesTitle: event.series_title,
+            hasQuiz: false
+          }
+        };
+      }
+      
+      // Step 3: Get the position of this video in the series and find videos before it
+      const positionQuery = `
+        WITH ordered_events AS (
+          SELECT
+            id,
+            title,
+            ROW_NUMBER() OVER (
+              ORDER BY
+                CASE
+                  WHEN metadata->'http://ethz.ch/video/metadata'->>'order' IS NOT NULL
+                  THEN (metadata->'http://ethz.ch/video/metadata'->>'order')::int
+                  ELSE 999999
+                END,
+                created
+            ) as position
+          FROM all_events
+          WHERE series = $1
+            AND state = 'ready'
+        )
+        SELECT id, title, position
+        FROM ordered_events
+        ORDER BY position
+      `;
+      const positionResult = await this.pool.query(positionQuery, [seriesId]);
+      const allSeriesVideos = positionResult.rows;
+      
+      // Find the position of the current video
+      const currentVideoIndex = allSeriesVideos.findIndex((v: any) => v.id.toString() === eventId.toString());
+      if (currentVideoIndex === -1) {
+        return {
+          eligible: false,
+          reason: 'Video position could not be determined in the series',
+          details: {
+            seriesId: seriesId.toString(),
+            seriesTitle: event.series_title,
+            hasQuiz: true
+          }
+        };
+      }
+      
+      const currentPosition = currentVideoIndex + 1;
+      const totalInSeries = allSeriesVideos.length;
+      
+      // Get IDs of videos before this one in the series
+      const videosBeforeThis = allSeriesVideos.slice(0, currentVideoIndex);
+      
+      if (videosBeforeThis.length === 0) {
+        return {
+          eligible: false,
+          reason: 'This is the first video in the series. Cumulative quizzes require at least one previous video with a quiz.',
+          details: {
+            seriesId: seriesId.toString(),
+            seriesTitle: event.series_title,
+            position: currentPosition,
+            totalInSeries: totalInSeries,
+            previousVideosWithQuizzes: 0,
+            hasQuiz: true
+          }
+        };
+      }
+      
+      // Step 4: Check how many of the PREVIOUS videos have quizzes
+      const previousIds = videosBeforeThis.map((v: any) => v.id.toString());
+      const previousQuizzesQuery = `
+        SELECT DISTINCT event_id
+        FROM ai_quizzes
+        WHERE event_id = ANY($1::bigint[]) AND language = $2
+      `;
+      const previousQuizzesResult = await this.pool.query(previousQuizzesQuery, [previousIds, language]);
+      const previousVideosWithQuizzes = previousQuizzesResult.rows.length;
+      
+      if (previousVideosWithQuizzes === 0) {
+        return {
+          eligible: false,
+          reason: 'No previous videos in this series have quizzes yet. Generate quizzes for earlier videos first.',
+          details: {
+            seriesId: seriesId.toString(),
+            seriesTitle: event.series_title,
+            position: currentPosition,
+            totalInSeries: totalInSeries,
+            previousVideosWithQuizzes: 0,
+            hasQuiz: true
+          }
+        };
+      }
+      
+      // All conditions met!
+      return {
+        eligible: true,
+        reason: `Cumulative quiz can be generated. This video is #${currentPosition} of ${totalInSeries} in the series, with ${previousVideosWithQuizzes} previous video(s) having quizzes.`,
+        details: {
+          seriesId: seriesId.toString(),
+          seriesTitle: event.series_title,
+          position: currentPosition,
+          totalInSeries: totalInSeries,
+          previousVideosWithQuizzes: previousVideosWithQuizzes,
+          hasQuiz: true
+        }
+      };
+      
+    } catch (error: any) {
+      console.error('Error checking cumulative quiz eligibility:', error);
+      return {
+        eligible: false,
+        reason: `Error checking eligibility: ${error.message}`
+      };
+    }
   }
 }

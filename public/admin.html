@@ -879,13 +879,9 @@
 
         /**
          * Check if cumulative quiz generation is allowed for the selected video
-         * Requirements:
-         * 1. Quiz feature must be enabled
-         * 2. Current video must have a regular quiz for the selected language
-         * 3. Video must be part of a series
-         * 4. At least one other video in the series must have a quiz (indicating previous videos exist with quizzes)
+         * Uses server-side eligibility check to properly determine video ordering in series
          */
-        function updateCumulativeQuizButtonState() {
+        async function updateCumulativeQuizButtonState() {
             const btn = document.getElementById('btn-generate-cumulative-quiz');
             if (!btn) return;
             
@@ -905,54 +901,31 @@
                 return;
             }
             
-            // Find the selected event
-            const event = allEvents.find(e => e.id === eventId);
-            if (!event) {
+            // Show loading state
+            btn.disabled = true;
+            btn.title = 'Checking eligibility...';
+            
+            try {
+                // Call server-side eligibility check which properly determines video order
+                const response = await fetch(`${API_BASE}/api/cumulative-quizzes/eligibility/${eventId}?language=${language}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                btn.disabled = !result.eligible;
+                btn.title = result.reason;
+                
+                // If eligible, add more details to title
+                if (result.eligible && result.details) {
+                    btn.title = `${result.reason} (Position ${result.details.position}/${result.details.totalInSeries})`;
+                }
+            } catch (error) {
+                console.error('Error checking cumulative quiz eligibility:', error);
                 btn.disabled = true;
-                btn.title = 'Video not found.';
-                return;
+                btn.title = 'Error checking eligibility. Please try again.';
             }
-            
-            // Check if video is part of a series (using 'series' field which is the series ID)
-            if (!event.series) {
-                btn.disabled = true;
-                btn.title = 'This video is not part of a series. Cumulative quizzes require a video series.';
-                return;
-            }
-            
-            // Check if current video has a quiz for the selected language
-            const hasQuiz = event.quizLanguages && event.quizLanguages.includes(language);
-            if (!hasQuiz) {
-                btn.disabled = true;
-                btn.title = 'Generate a regular quiz for this video first before creating a cumulative quiz.';
-                return;
-            }
-            
-            // Find other videos in the same series (matching by series ID)
-            const otherSeriesVideos = allEvents.filter(e =>
-                e.id !== eventId && e.series === event.series
-            );
-            
-            if (otherSeriesVideos.length === 0) {
-                btn.disabled = true;
-                btn.title = 'This is the only video in the series. Cumulative quizzes require multiple videos.';
-                return;
-            }
-            
-            // Check if at least one other video in the series has a quiz
-            const otherVideosWithQuizzes = otherSeriesVideos.filter(e =>
-                e.quizLanguages && e.quizLanguages.length > 0
-            );
-            
-            if (otherVideosWithQuizzes.length === 0) {
-                btn.disabled = true;
-                btn.title = 'No other videos in this series have quizzes yet. Generate quizzes for earlier videos first.';
-                return;
-            }
-            
-            // All conditions met - enable the button
-            btn.disabled = false;
-            btn.title = `Generates a cumulative quiz covering this video and ${otherVideosWithQuizzes.length} other video(s) in the series.`;
         }
 
         async function toggleFeature(feature, enabled) {

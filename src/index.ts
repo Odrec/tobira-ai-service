@@ -770,6 +770,36 @@ app.get('/api/cumulative-quizzes/stats', async (req: Request, res: Response) => 
   }
 });
 
+// Check cumulative quiz eligibility for an event (must come before /:eventId route)
+app.get('/api/cumulative-quizzes/eligibility/:eventId', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.eventId;
+    
+    if (!req.query.language) {
+      return res.status(400).json({
+        error: 'Language parameter is required',
+        message: 'Add ?language=<code> to the URL (e.g., ?language=en)'
+      });
+    }
+
+    const language = normalizeLanguageCode(req.query.language as string);
+    
+    const result = await cumulativeQuizService.checkEligibility(eventId, language);
+    
+    res.json({
+      eventId,
+      language,
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Cumulative quiz eligibility check error:', error);
+    res.status(500).json({
+      error: 'Failed to check cumulative quiz eligibility',
+      message: error.message,
+    });
+  }
+});
+
 // Get cumulative quiz for an event
 app.get('/api/cumulative-quizzes/:eventId', async (req: Request, res: Response) => {
   try {
