@@ -504,9 +504,15 @@
                     <table id="videoTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
                         <thead style="position: sticky; top: 0; background: #f5f5f5; z-index: 1;">
                             <tr>
-                                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd; width: 40%;">Video Title</th>
-                                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd; width: 25%;">Series</th>
-                                <th style="padding: 8px; text-align: center; border-bottom: 2px solid #ddd; width: 15%;">Date</th>
+                                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd; width: 40%; cursor: pointer; user-select: none;" onclick="sortVideos('title')" title="Click to sort by title">
+                                    Video Title <span id="sort-indicator-title" style="font-size: 10px; margin-left: 4px;">▼</span>
+                                </th>
+                                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd; width: 25%; cursor: pointer; user-select: none;" onclick="sortVideos('series')" title="Click to sort by series">
+                                    Series <span id="sort-indicator-series" style="font-size: 10px; margin-left: 4px; color: #999;"></span>
+                                </th>
+                                <th style="padding: 8px; text-align: center; border-bottom: 2px solid #ddd; width: 15%; cursor: pointer; user-select: none;" onclick="sortVideos('date')" title="Click to sort by date">
+                                    Date <span id="sort-indicator-date" style="font-size: 10px; margin-left: 4px; color: #999;"></span>
+                                </th>
                                 <th style="padding: 8px; text-align: center; border-bottom: 2px solid #ddd; width: 20%;">Status</th>
                             </tr>
                         </thead>
@@ -1814,9 +1820,8 @@
                 
                 if (data.events && data.events.length > 0) {
                     allEvents = data.events;
-                    renderEvents(allEvents);
+                    sortAndRenderEvents(allEvents);
                     log(`Loaded ${data.events.length} videos with generated content`, 'info');
-                    document.getElementById('videoCount').textContent = `${data.events.length} videos available`;
                     
                     // Set up event listener for language updates
                     select.addEventListener('change', updateLanguageOptions);
@@ -2012,7 +2017,7 @@
         function filterVideos() {
             const searchTerm = document.getElementById('eventSearch').value.toLowerCase();
             if (!searchTerm) {
-                renderEvents(allEvents);
+                sortAndRenderEvents(allEvents);
                 return;
             }
             
@@ -2020,7 +2025,73 @@
                 event.title.toLowerCase().includes(searchTerm) ||
                 event.id.toString().includes(searchTerm)
             );
-            renderEvents(filtered);
+            sortAndRenderEvents(filtered);
+        }
+
+        // Current sort state
+        let currentSortColumn = 'title';
+        let currentSortDirection = 'asc'; // 'asc' or 'desc'
+
+        // Sort videos by column
+        function sortVideos(column) {
+            // If clicking same column, toggle direction; otherwise, new column ascending
+            if (currentSortColumn === column) {
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortColumn = column;
+                currentSortDirection = 'asc';
+            }
+            
+            // Update sort indicators
+            updateSortIndicators();
+            
+            // Re-filter and sort
+            filterVideos();
+        }
+
+        // Update sort indicators in table headers
+        function updateSortIndicators() {
+            const columns = ['title', 'series', 'date'];
+            columns.forEach(col => {
+                const indicator = document.getElementById(`sort-indicator-${col}`);
+                if (indicator) {
+                    if (col === currentSortColumn) {
+                        indicator.textContent = currentSortDirection === 'asc' ? '▲' : '▼';
+                        indicator.style.color = '#333';
+                    } else {
+                        indicator.textContent = '';
+                        indicator.style.color = '#999';
+                    }
+                }
+            });
+        }
+
+        // Sort and render events
+        function sortAndRenderEvents(events) {
+            const sorted = [...events].sort((a, b) => {
+                let comparison = 0;
+                
+                switch (currentSortColumn) {
+                    case 'title':
+                        comparison = (a.title || '').localeCompare(b.title || '');
+                        break;
+                    case 'series':
+                        comparison = (a.seriesTitle || '').localeCompare(b.seriesTitle || '');
+                        break;
+                    case 'date':
+                        // Parse dates for comparison
+                        const dateA = a.startTime ? new Date(a.startTime).getTime() : 0;
+                        const dateB = b.startTime ? new Date(b.startTime).getTime() : 0;
+                        comparison = dateA - dateB;
+                        break;
+                    default:
+                        comparison = 0;
+                }
+                
+                return currentSortDirection === 'asc' ? comparison : -comparison;
+            });
+            
+            renderEvents(sorted);
         }
 
         // Flagged Content Functions
