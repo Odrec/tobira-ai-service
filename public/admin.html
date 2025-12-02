@@ -560,6 +560,79 @@
                 <button onclick="batchExtractCaptions()">Batch Extract (10 events)</button>
             </div>
 
+            <!-- Series Batch Generation -->
+            <h3 style="margin-top: 30px; color: #9b59b6; border-bottom: 2px solid #9b59b6; padding-bottom: 10px;">📚 Series Content Generation</h3>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                Generate transcripts, summaries, and quizzes for all videos in a series at once.
+            </p>
+            
+            <div class="form-group">
+                <label>Select Series:</label>
+                <select id="seriesSelect" onchange="onSeriesChange()">
+                    <option value="">Loading series...</option>
+                </select>
+                <div id="seriesInfo" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+            </div>
+            
+            <div class="form-group">
+                <label>Language for Generation:</label>
+                <select id="seriesLanguage">
+                    <option value="en">English (en)</option>
+                    <option value="de">German (de)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Content Types to Generate:</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 8px;">
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="gen-transcript" checked style="width: auto;">
+                        <span>📝 Transcripts</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="gen-summary" checked style="width: auto;">
+                        <span>📄 Summaries</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="gen-quiz" checked style="width: auto;">
+                        <span>❓ Quizzes</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="gen-cumulative-quiz" style="width: auto;">
+                        <span>🔗 Cumulative Quizzes</span>
+                    </label>
+                </div>
+                <div style="font-size: 11px; color: #888; margin-top: 8px;">
+                    <strong>Note:</strong> Dependencies are auto-handled: summaries/quizzes auto-extract transcripts if needed.
+                    Cumulative quizzes are generated sequentially (oldest to newest) and require regular quizzes.
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <input type="checkbox" id="gen-force-regenerate" style="width: auto;">
+                    <span>Force regenerate (overwrite existing content)</span>
+                </label>
+            </div>
+            
+            <div class="button-group">
+                <button id="btn-generate-series" onclick="generateForSeries()" class="button-success" style="background: #9b59b6;">
+                    🚀 Generate Content for Series
+                </button>
+                <button onclick="previewSeriesVideos()" style="background: #6c757d;">
+                    👁️ Preview Videos
+                </button>
+            </div>
+            
+            <div id="seriesGenerationProgress" style="display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                <div style="font-weight: bold; margin-bottom: 10px;">Generation Progress</div>
+                <div class="progress-bar" style="margin-bottom: 10px;">
+                    <div id="series-progress-fill" class="progress-fill" style="width: 0%;"></div>
+                </div>
+                <div id="series-progress-text" style="font-size: 13px; color: #666;"></div>
+                <div id="series-results" style="margin-top: 15px; max-height: 300px; overflow-y: auto;"></div>
+            </div>
+
             <h3 style="margin-top: 30px; color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">Delete Operations</h3>
             
             <div style="margin-top: 15px;">
@@ -2240,10 +2313,252 @@
             log(`Loaded ${contentType} for review (Event: ${eventId}, Language: ${language})`, 'info');
         }
 
+        // ========================================
+        // Series Content Generation Functions
+        // ========================================
+        
+        let allSeries = [];
+        
+        async function loadSeries() {
+            try {
+                const data = await fetchAPI('/api/admin/series');
+                allSeries = data.series || [];
+                
+                const select = document.getElementById('seriesSelect');
+                select.innerHTML = '<option value="">Select a series...</option>';
+                
+                allSeries.forEach(series => {
+                    const option = document.createElement('option');
+                    option.value = series.id;
+                    option.textContent = `${series.title} (${series.videoCount} videos)`;
+                    select.appendChild(option);
+                });
+                
+                log(`Loaded ${allSeries.length} series with videos`, 'info');
+            } catch (error) {
+                document.getElementById('seriesSelect').innerHTML = '<option value="">Failed to load series</option>';
+                log(`Failed to load series: ${error.message}`, 'error');
+            }
+        }
+        
+        function onSeriesChange() {
+            const seriesId = document.getElementById('seriesSelect').value;
+            const infoDiv = document.getElementById('seriesInfo');
+            
+            if (!seriesId) {
+                infoDiv.innerHTML = '';
+                return;
+            }
+            
+            const series = allSeries.find(s => s.id === seriesId);
+            if (series) {
+                infoDiv.innerHTML = `
+                    <strong>${series.videoCount}</strong> videos |
+                    <strong>${series.videosWithTranscripts}</strong> with transcripts |
+                    <strong>${series.videosWithSummaries}</strong> with summaries |
+                    <strong>${series.videosWithQuizzes}</strong> with quizzes
+                `;
+            }
+        }
+        
+        async function previewSeriesVideos() {
+            const seriesId = document.getElementById('seriesSelect').value;
+            
+            if (!seriesId) {
+                log('Please select a series first', 'error');
+                return;
+            }
+            
+            const progressDiv = document.getElementById('seriesGenerationProgress');
+            const resultsDiv = document.getElementById('series-results');
+            progressDiv.style.display = 'block';
+            resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div> Loading videos...</div>';
+            
+            try {
+                const data = await fetchAPI(`/api/admin/series/${seriesId}/videos`);
+                
+                let html = `<h4>Videos in "${data.seriesTitle}" (${data.videos.length} total)</h4>`;
+                html += '<table style="width: 100%; font-size: 12px; border-collapse: collapse;">';
+                html += '<tr style="background: #f5f5f5;"><th style="padding: 5px; text-align: left;">#</th><th style="padding: 5px; text-align: left;">Title</th><th style="padding: 5px; text-align: center;">T</th><th style="padding: 5px; text-align: center;">S</th><th style="padding: 5px; text-align: center;">Q</th></tr>';
+                
+                const language = document.getElementById('seriesLanguage').value;
+                data.videos.forEach((video, idx) => {
+                    const hasTranscript = video.transcriptLanguages.includes(language);
+                    const hasSummary = video.summaryLanguages.includes(language);
+                    const hasQuiz = video.quizLanguages.includes(language);
+                    
+                    html += `<tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 5px;">${idx + 1}</td>
+                        <td style="padding: 5px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</td>
+                        <td style="padding: 5px; text-align: center;">${hasTranscript ? '✅' : '❌'}</td>
+                        <td style="padding: 5px; text-align: center;">${hasSummary ? '✅' : '❌'}</td>
+                        <td style="padding: 5px; text-align: center;">${hasQuiz ? '✅' : '❌'}</td>
+                    </tr>`;
+                });
+                html += '</table>';
+                html += '<p style="font-size: 11px; color: #666; margin-top: 10px;">T=Transcript, S=Summary, Q=Quiz for selected language (' + language + ')</p>';
+                
+                resultsDiv.innerHTML = html;
+                log(`Previewed ${data.videos.length} videos in series`, 'info');
+            } catch (error) {
+                resultsDiv.innerHTML = `<p style="color: #e74c3c;">Failed to load videos: ${error.message}</p>`;
+            }
+        }
+        
+        async function generateForSeries() {
+            const seriesId = document.getElementById('seriesSelect').value;
+            const language = document.getElementById('seriesLanguage').value;
+            
+            if (!seriesId) {
+                log('Please select a series first', 'error');
+                return;
+            }
+            
+            // Collect content types
+            const contentTypes = [];
+            if (document.getElementById('gen-transcript').checked) contentTypes.push('transcript');
+            if (document.getElementById('gen-summary').checked) contentTypes.push('summary');
+            if (document.getElementById('gen-quiz').checked) contentTypes.push('quiz');
+            if (document.getElementById('gen-cumulative-quiz').checked) contentTypes.push('cumulative_quiz');
+            
+            if (contentTypes.length === 0) {
+                log('Please select at least one content type to generate', 'error');
+                return;
+            }
+            
+            const forceRegenerate = document.getElementById('gen-force-regenerate').checked;
+            
+            // Find series info
+            const series = allSeries.find(s => s.id === seriesId);
+            const seriesName = series ? series.title : seriesId;
+            
+            // Warn user about potentially long operation
+            const proceed = confirm(
+                `This will generate ${contentTypes.join(', ')} for all ${series?.videoCount || 'N'} videos in "${seriesName}".\n\n` +
+                `Language: ${language}\n` +
+                `Force regenerate: ${forceRegenerate ? 'Yes' : 'No'}\n\n` +
+                `This may take several minutes. Continue?`
+            );
+            
+            if (!proceed) {
+                log('Series generation cancelled', 'info');
+                return;
+            }
+            
+            const progressDiv = document.getElementById('seriesGenerationProgress');
+            const progressFill = document.getElementById('series-progress-fill');
+            const progressText = document.getElementById('series-progress-text');
+            const resultsDiv = document.getElementById('series-results');
+            const btn = document.getElementById('btn-generate-series');
+            
+            progressDiv.style.display = 'block';
+            progressFill.style.width = '10%';
+            progressText.textContent = `Generating content for "${seriesName}"... This may take several minutes.`;
+            resultsDiv.innerHTML = '';
+            btn.disabled = true;
+            btn.textContent = '⏳ Generating...';
+            
+            log(`Starting series content generation for "${seriesName}"...`, 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/series/${seriesId}/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        language,
+                        contentTypes,
+                        forceRegenerate
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                progressFill.style.width = '100%';
+                progressText.textContent = `Completed! Processed ${data.stats.totalVideos} videos.`;
+                
+                // Build results summary
+                let html = '<h4 style="margin-top: 15px;">Generation Results</h4>';
+                
+                // Stats summary
+                html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 15px;">';
+                if (contentTypes.includes('transcript')) {
+                    html += `<div style="background: #e8fde8; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 20px; font-weight: bold; color: #27ae60;">${data.stats.transcripts.success}</div>
+                        <div style="font-size: 11px;">Transcripts OK</div>
+                    </div>`;
+                }
+                if (contentTypes.includes('summary')) {
+                    html += `<div style="background: #e8fde8; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 20px; font-weight: bold; color: #27ae60;">${data.stats.summaries.success}</div>
+                        <div style="font-size: 11px;">Summaries OK</div>
+                    </div>`;
+                }
+                if (contentTypes.includes('quiz')) {
+                    html += `<div style="background: #e8fde8; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 20px; font-weight: bold; color: #27ae60;">${data.stats.quizzes.success}</div>
+                        <div style="font-size: 11px;">Quizzes OK</div>
+                    </div>`;
+                }
+                if (contentTypes.includes('cumulative_quiz') && data.stats.cumulativeQuizzes) {
+                    html += `<div style="background: #e8fde8; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 20px; font-weight: bold; color: #27ae60;">${data.stats.cumulativeQuizzes.success}</div>
+                        <div style="font-size: 11px;">Cumulative OK</div>
+                    </div>`;
+                }
+                html += '</div>';
+                
+                // Detailed results table
+                html += '<table style="width: 100%; font-size: 11px; border-collapse: collapse;">';
+                html += '<tr style="background: #f5f5f5;"><th style="padding: 5px; text-align: left;">#</th><th style="padding: 5px; text-align: left;">Video</th><th style="padding: 5px; text-align: left;">Results</th></tr>';
+                
+                data.results.forEach((result, idx) => {
+                    const ops = result.operations.map(op => {
+                        const icon = op.success ? '✅' : '❌';
+                        const typeShort = op.type === 'transcript' ? 'T' :
+                                         op.type === 'summary' ? 'S' :
+                                         op.type === 'quiz' ? 'Q' :
+                                         op.type === 'cumulative_quiz' ? 'CQ' : op.type;
+                        return `<span title="${op.type}: ${op.message}" style="cursor: help;">${icon}${typeShort}</span>`;
+                    }).join(' ');
+                    
+                    html += `<tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 5px;">${idx + 1}</td>
+                        <td style="padding: 5px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(result.title)}">${escapeHtml(result.title)}</td>
+                        <td style="padding: 5px;">${ops}</td>
+                    </tr>`;
+                });
+                html += '</table>';
+                
+                resultsDiv.innerHTML = html;
+                
+                log(`✓ Series generation completed: ${data.stats.totalVideos} videos processed`, 'success');
+                
+                // Refresh events list to show updated status
+                await loadEvents();
+                onSeriesChange(); // Update series info
+                
+            } catch (error) {
+                progressFill.style.width = '100%';
+                progressFill.style.background = '#e74c3c';
+                progressText.textContent = `Failed: ${error.message}`;
+                resultsDiv.innerHTML = `<p style="color: #e74c3c;">${error.message}</p>`;
+                log(`✗ Series generation failed: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 Generate Content for Series';
+            }
+        }
+
         // Initialize
         async function init() {
             log('Admin dashboard initialized', 'info');
             await loadEvents();
+            await loadSeries();
             await Promise.all([
                 loadHealth(),
                 loadFeatures(true), // Force initial build

@@ -1138,6 +1138,461 @@ app.get('/api/queue/stats', async (req: Request, res: Response) => {
 });
 
 
+// Admin: Get list of all series with video counts and content status
+app.get('/api/admin/series', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT
+         s.id,
+         s.title,
+         COUNT(DISTINCT e.id) as video_count,
+         COUNT(DISTINCT vt.event_id) as videos_with_transcripts,
+         COUNT(DISTINCT summ.event_id) as videos_with_summaries,
+         COUNT(DISTINCT q.event_id) as videos_with_quizzes
+       FROM all_series s
+       INNER JOIN all_events e ON e.series = s.id AND e.state = 'ready'
+       LEFT JOIN video_transcripts vt ON vt.event_id = e.id
+       LEFT JOIN ai_summaries summ ON summ.event_id = e.id
+       LEFT JOIN ai_quizzes q ON q.event_id = e.id
+       GROUP BY s.id, s.title
+       HAVING COUNT(DISTINCT e.id) > 0
+       ORDER BY s.title`
+    );
+    
+    res.json({
+      series: result.rows.map((row: any) => ({
+        id: row.id.toString(),
+        title: row.title || `Series ${row.id}`,
+        videoCount: parseInt(row.video_count),
+        videosWithTranscripts: parseInt(row.videos_with_transcripts),
+        videosWithSummaries: parseInt(row.videos_with_summaries),
+        videosWithQuizzes: parseInt(row.videos_with_quizzes)
+      }))
+    });
+  } catch (error: any) {
+    console.error('Get series error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Get videos in a specific series with content status
+app.get('/api/admin/series/:seriesId/videos', async (req: Request, res: Response) => {
+  try {
+    const seriesId = req.params.seriesId;
+    
+    const result = await db.query(
+      `SELECT
+         e.id,
+         e.title,
+         e.created,
+         e.start_time,
+         COALESCE(
+           array_agg(DISTINCT c.lang) FILTER (WHERE c.lang IS NOT NULL),
+           '{}'
+         ) as caption_languages,
+         COALESCE(
+           array_agg(DISTINCT vt.language) FILTER (WHERE vt.language IS NOT NULL),
+           '{}'
+         ) as transcript_languages,
+         COALESCE(
+           array_agg(DISTINCT summ.language) FILTER (WHERE summ.language IS NOT NULL),
+           '{}'
+         ) as summary_languages,
+         COALESCE(
+           array_agg(DISTINCT q.language) FILTER (WHERE q.language IS NOT NULL),
+           '{}'
+         ) as quiz_languages,
+         -- Order info for series position
+         CASE
+           WHEN e.metadata->'http://ethz.ch/video/metadata'->>'order' IS NOT NULL
+           THEN (e.metadata->'http://ethz.ch/video/metadata'->>'order')::int
+           ELSE 999999
+         END as sort_order
+       FROM all_events e
+       LEFT JOIN LATERAL unnest(e.captions) AS c ON true
+       LEFT JOIN video_transcripts vt ON vt.event_id = e.id
+       LEFT JOIN ai_summaries summ ON summ.event_id = e.id
+       LEFT JOIN ai_quizzes q ON q.event_id = e.id
+       WHERE e.series = $1 AND e.state = 'ready'
+       GROUP BY e.id, e.title, e.created, e.start_time, e.metadata
+       ORDER BY sort_order, e.created`,
+      [seriesId]
+    );
+    
+    // Get series info
+    const seriesResult = await db.query(
+      'SELECT title FROM all_series WHERE id = $1',
+      [seriesId]
+    );
+    
+    res.json({
+      seriesId,
+      seriesTitle: seriesResult.rows[0]?.title || `Series ${seriesId}`,
+      videos: result.rows.map((row: any, index: number) => ({
+        id: row.id.toString(),
+        title: row.title || `Video ${row.id}`,
+        created: row.created,
+        startTime: row.start_time,
+        position: index + 1,
+        captionLanguages: row.caption_languages || [],
+        transcriptLanguages: row.transcript_languages || [],
+        summaryLanguages: row.summary_languages || [],
+        quizLanguages: row.quiz_languages || []
+      }))
+    });
+  } catch (error: any) {
+    console.error('Get series videos error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Generate content for all videos in a series
+// Smart dependency handling:
+// - If summary/quiz requested but no transcript: auto-extract transcript first
+// - Cumulative quizzes generated sequentially from oldest to newest
+app.post('/api/admin/series/:seriesId/generate', async (req: Request, res: Response) => {
+  try {
+    const seriesId = req.params.seriesId;
+    const { language, contentTypes = ['transcript', 'summary', 'quiz'], forceRegenerate = false } = req.body;
+    
+    if (!language) {
+      return res.status(400).json({
+        error: 'Language is required',
+        message: 'Please specify a language code in request body'
+      });
+    }
+    
+    const normalizedLanguage = normalizeLanguageCode(language);
+    const wantsCumulativeQuiz = contentTypes.includes('cumulative_quiz');
+    
+    // Get all videos in series ordered by position (oldest to newest)
+    const videosResult = await db.query(
+      `SELECT
+         e.id,
+         e.title,
+         array_agg(DISTINCT c.lang) FILTER (WHERE c.lang IS NOT NULL) as caption_languages
+       FROM all_events e
+       LEFT JOIN LATERAL unnest(e.captions) AS c ON true
+       WHERE e.series = $1 AND e.state = 'ready'
+       GROUP BY e.id, e.title, e.metadata, e.created
+       ORDER BY
+         CASE
+           WHEN e.metadata->'http://ethz.ch/video/metadata'->>'order' IS NOT NULL
+           THEN (e.metadata->'http://ethz.ch/video/metadata'->>'order')::int
+           ELSE 999999
+         END,
+         e.created`,
+      [seriesId]
+    );
+    
+    const videos = videosResult.rows;
+    
+    if (videos.length === 0) {
+      return res.status(404).json({
+        error: 'No videos found in series',
+        seriesId
+      });
+    }
+    
+    // Check feature toggles
+    const summaryEnabled = await db.isSummaryEnabled();
+    const quizEnabled = await db.isQuizEnabled();
+    
+    const results: any[] = [];
+    
+    // Track which videos have quizzes for cumulative quiz logic
+    const videosWithQuizzes: string[] = [];
+    
+    for (let i = 0; i < videos.length; i++) {
+      const video = videos[i];
+      const videoResult: any = {
+        eventId: video.id.toString(),
+        title: video.title,
+        position: i + 1,
+        operations: []
+      };
+      
+      // Determine if we need a transcript (for any downstream operation)
+      const needsTranscript = contentTypes.includes('transcript') ||
+                              contentTypes.includes('summary') ||
+                              contentTypes.includes('quiz');
+      
+      // 1. Extract transcript if needed or if downstream operations need it
+      let hasTranscript = false;
+      if (needsTranscript) {
+        try {
+          // First check if transcript already exists
+          const existingTranscript = await db.getTranscript(video.id.toString(), normalizedLanguage);
+          
+          if (existingTranscript && !forceRegenerate) {
+            hasTranscript = true;
+            if (contentTypes.includes('transcript')) {
+              videoResult.operations.push({
+                type: 'transcript',
+                success: true,
+                message: 'Already exists'
+              });
+            }
+          } else {
+            // Need to extract
+            const hasCaption = video.caption_languages?.includes(normalizedLanguage);
+            if (hasCaption) {
+              const extractor = new CaptionExtractorService(db);
+              const captionResult = await extractor.extractForEvent(video.id.toString(), normalizedLanguage);
+              hasTranscript = captionResult.success;
+              if (contentTypes.includes('transcript')) {
+                videoResult.operations.push({
+                  type: 'transcript',
+                  success: captionResult.success,
+                  message: captionResult.success ? (existingTranscript ? 'Re-extracted' : 'Extracted') : captionResult.error
+                });
+              } else if (captionResult.success) {
+                videoResult.operations.push({
+                  type: 'transcript',
+                  success: true,
+                  message: 'Auto-extracted (needed for downstream)'
+                });
+              }
+            } else {
+              if (contentTypes.includes('transcript')) {
+                videoResult.operations.push({
+                  type: 'transcript',
+                  success: false,
+                  message: `No caption available for language ${normalizedLanguage}`
+                });
+              }
+            }
+          }
+        } catch (error: any) {
+          if (contentTypes.includes('transcript')) {
+            videoResult.operations.push({
+              type: 'transcript',
+              success: false,
+              message: error.message
+            });
+          }
+        }
+      }
+      
+      // 2. Generate summary if enabled
+      if (contentTypes.includes('summary')) {
+        if (!summaryEnabled) {
+          videoResult.operations.push({
+            type: 'summary',
+            success: false,
+            message: 'Summary feature disabled'
+          });
+        } else if (!hasTranscript) {
+          const transcript = await db.getTranscript(video.id.toString(), normalizedLanguage);
+          if (!transcript) {
+            videoResult.operations.push({
+              type: 'summary',
+              success: false,
+              message: 'No transcript available'
+            });
+          } else {
+            hasTranscript = true;
+          }
+        }
+        
+        if (summaryEnabled && hasTranscript) {
+          try {
+            const transcript = await db.getTranscript(video.id.toString(), normalizedLanguage);
+            const existing = await db.getSummary(video.id.toString(), normalizedLanguage);
+            
+            if (existing && !forceRegenerate) {
+              videoResult.operations.push({
+                type: 'summary',
+                success: true,
+                message: 'Already exists'
+              });
+            } else {
+              const summaryResult = await openai.generateSummary(transcript!);
+              await db.saveSummary(
+                video.id.toString(),
+                summaryResult.content,
+                summaryResult.model,
+                normalizedLanguage,
+                summaryResult.processingTime
+              );
+              videoResult.operations.push({
+                type: 'summary',
+                success: true,
+                message: existing ? 'Regenerated' : 'Generated'
+              });
+            }
+          } catch (error: any) {
+            videoResult.operations.push({
+              type: 'summary',
+              success: false,
+              message: error.message
+            });
+          }
+        }
+      }
+      
+      // 3. Generate quiz if enabled
+      if (contentTypes.includes('quiz')) {
+        if (!quizEnabled) {
+          videoResult.operations.push({
+            type: 'quiz',
+            success: false,
+            message: 'Quiz feature disabled'
+          });
+        } else {
+          // Check transcript again in case it was extracted above
+          const transcript = await db.getTranscript(video.id.toString(), normalizedLanguage);
+          
+          if (!transcript) {
+            videoResult.operations.push({
+              type: 'quiz',
+              success: false,
+              message: 'No transcript available'
+            });
+          } else {
+            try {
+              const existingQuiz = await db.query(
+                'SELECT id FROM ai_quizzes WHERE event_id = $1 AND language = $2',
+                [video.id, normalizedLanguage]
+              );
+              
+              if (existingQuiz.rows.length > 0 && !forceRegenerate) {
+                videoResult.operations.push({
+                  type: 'quiz',
+                  success: true,
+                  message: 'Already exists'
+                });
+                videosWithQuizzes.push(video.id.toString());
+              } else {
+                const quizResult = await openai.generateQuiz(transcript);
+                await db.query(
+                  `INSERT INTO ai_quizzes (event_id, language, quiz_data, model, processing_time_ms)
+                   VALUES ($1, $2, $3, $4, $5)
+                   ON CONFLICT (event_id, language)
+                   DO UPDATE SET quiz_data = $3, model = $4, processing_time_ms = $5, updated_at = NOW()`,
+                  [video.id, normalizedLanguage, JSON.stringify(quizResult.quizData), quizResult.model, quizResult.processingTime]
+                );
+                videoResult.operations.push({
+                  type: 'quiz',
+                  success: true,
+                  message: `${existingQuiz.rows.length > 0 ? 'Regenerated' : 'Generated'} ${quizResult.quizData.questions?.length || 0} questions`
+                });
+                videosWithQuizzes.push(video.id.toString());
+              }
+            } catch (error: any) {
+              videoResult.operations.push({
+                type: 'quiz',
+                success: false,
+                message: error.message
+              });
+            }
+          }
+        }
+      } else {
+        // Check if this video has a quiz (for cumulative quiz tracking)
+        const existingQuiz = await db.query(
+          'SELECT id FROM ai_quizzes WHERE event_id = $1 AND language = $2',
+          [video.id, normalizedLanguage]
+        );
+        if (existingQuiz.rows.length > 0) {
+          videosWithQuizzes.push(video.id.toString());
+        }
+      }
+      
+      // 4. Generate cumulative quiz if requested and eligible
+      // Eligibility: current video has quiz AND at least one previous video has quiz
+      if (wantsCumulativeQuiz && quizEnabled) {
+        const currentVideoHasQuiz = videosWithQuizzes.includes(video.id.toString());
+        const previousVideosWithQuizzes = videosWithQuizzes.filter(id => id !== video.id.toString());
+        
+        if (!currentVideoHasQuiz) {
+          videoResult.operations.push({
+            type: 'cumulative_quiz',
+            success: false,
+            message: 'Video needs a regular quiz first'
+          });
+        } else if (previousVideosWithQuizzes.length === 0) {
+          videoResult.operations.push({
+            type: 'cumulative_quiz',
+            success: false,
+            message: 'No previous videos with quizzes (this is the first)'
+          });
+        } else {
+          try {
+            // Check if cumulative quiz already exists
+            const existingCumQuiz = await db.query(
+              'SELECT id FROM ai_cumulative_quizzes WHERE event_id = $1 AND language = $2',
+              [video.id, normalizedLanguage]
+            );
+            
+            if (existingCumQuiz.rows.length > 0 && !forceRegenerate) {
+              videoResult.operations.push({
+                type: 'cumulative_quiz',
+                success: true,
+                message: 'Already exists'
+              });
+            } else {
+              const cumQuiz = await cumulativeQuizService.generateCumulativeQuiz(
+                video.id.toString(),
+                normalizedLanguage,
+                forceRegenerate
+              );
+              videoResult.operations.push({
+                type: 'cumulative_quiz',
+                success: true,
+                message: `${existingCumQuiz.rows.length > 0 ? 'Regenerated' : 'Generated'}: ${cumQuiz.questions.length} questions from ${cumQuiz.videoCount} videos`
+              });
+            }
+          } catch (error: any) {
+            videoResult.operations.push({
+              type: 'cumulative_quiz',
+              success: false,
+              message: error.message
+            });
+          }
+        }
+      }
+      
+      results.push(videoResult);
+    }
+    
+    // Calculate summary stats
+    const stats = {
+      totalVideos: videos.length,
+      transcripts: {
+        success: results.filter(r => r.operations.find((o: any) => o.type === 'transcript' && o.success)).length,
+        failed: results.filter(r => r.operations.find((o: any) => o.type === 'transcript' && !o.success)).length
+      },
+      summaries: {
+        success: results.filter(r => r.operations.find((o: any) => o.type === 'summary' && o.success)).length,
+        failed: results.filter(r => r.operations.find((o: any) => o.type === 'summary' && !o.success)).length
+      },
+      quizzes: {
+        success: results.filter(r => r.operations.find((o: any) => o.type === 'quiz' && o.success)).length,
+        failed: results.filter(r => r.operations.find((o: any) => o.type === 'quiz' && !o.success)).length
+      },
+      cumulativeQuizzes: wantsCumulativeQuiz ? {
+        success: results.filter(r => r.operations.find((o: any) => o.type === 'cumulative_quiz' && o.success)).length,
+        failed: results.filter(r => r.operations.find((o: any) => o.type === 'cumulative_quiz' && !o.success)).length
+      } : undefined
+    };
+    
+    res.json({
+      success: true,
+      seriesId,
+      language: normalizedLanguage,
+      stats,
+      results
+    });
+  } catch (error: any) {
+    console.error('Series content generation error:', error);
+    res.status(500).json({
+      error: 'Failed to generate content for series',
+      message: error.message
+    });
+  }
+});
+
 // Admin: Get list of events/videos
 app.get('/api/admin/events', async (req: Request, res: Response) => {
   try {
