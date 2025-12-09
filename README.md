@@ -175,6 +175,10 @@ npm test
 npm run build
 ```
 
+## Authors
+
+[VirtUOS](https://www.virtuos.uni-osnabrueck.de/) - Center for Digital Teaching, Campus Management and Higher Education Didactics at Osnabrück University
+
 ## License
 
 Same as Tobira - see LICENSE file.
@@ -182,7 +186,3 @@ Same as Tobira - see LICENSE file.
 ## Disclaimer
 
 This project was developed with the assistance of generative AI, primarily using Anthropic's Claude models (Sonnet 4.5 and Opus 4.5). All AI-generated code has been reviewed and tested.
-
----
-
-**Built for the Tobira video portal community** 🚀
