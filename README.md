@@ -179,6 +179,10 @@ npm run build
 
 Same as Tobira - see LICENSE file.
 
+## Disclaimer
+
+This project was developed with the assistance of generative AI, primarily using Anthropic's Claude models (Sonnet 4.5 and Opus 4.5). All AI-generated code has been reviewed and tested.
+
 ---
 
 **Built for the Tobira video portal community** 🚀
