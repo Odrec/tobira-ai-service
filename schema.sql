@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS ai_summaries (
     approved_by TEXT,
     edited_by_human BOOLEAN DEFAULT FALSE,
     last_edited_by TEXT,
+    flagged BOOLEAN DEFAULT FALSE,
+    flag_count INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(event_id, language)
@@ -52,9 +54,26 @@ CREATE TABLE IF NOT EXISTS ai_quizzes (
     approved_by TEXT,
     edited_by_human BOOLEAN DEFAULT FALSE,
     last_edited_by TEXT,
+    flagged BOOLEAN DEFAULT FALSE,
+    flag_count INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(event_id, language)
+);
+
+-- Content flags table for user-reported issues
+CREATE TABLE IF NOT EXISTS ai_content_flags (
+    id SERIAL PRIMARY KEY,
+    content_type VARCHAR(20) NOT NULL, -- 'summary' or 'quiz'
+    content_id INTEGER NOT NULL,
+    event_id INTEGER NOT NULL,
+    username TEXT,
+    reason TEXT,
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'resolved', 'dismissed'
+    admin_notes TEXT,
+    resolved_by TEXT,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- AI-generated cumulative quizzes table (Phase 3)
@@ -108,7 +127,15 @@ INSERT INTO ai_config (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO ai_config (key, value, description) VALUES
-    ('default_model', '"gpt-5"', 'Default OpenAI model for generation')
+    ('summary_enabled', 'true', 'Enable/disable AI summary generation')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO ai_config (key, value, description) VALUES
+    ('quiz_enabled', 'true', 'Enable/disable AI quiz generation')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO ai_config (key, value, description) VALUES
+    ('default_model', '"gpt-4o"', 'Default OpenAI model for generation')
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO ai_config (key, value, description) VALUES
@@ -122,6 +149,10 @@ CREATE INDEX IF NOT EXISTS idx_quizzes_event_lang ON ai_quizzes(event_id, langua
 CREATE INDEX IF NOT EXISTS idx_transcripts_created ON video_transcripts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_summaries_created ON ai_summaries(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quizzes_created ON ai_quizzes(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_summaries_flagged ON ai_summaries(flagged) WHERE flagged = true;
+CREATE INDEX IF NOT EXISTS idx_quizzes_flagged ON ai_quizzes(flagged) WHERE flagged = true;
+CREATE INDEX IF NOT EXISTS idx_content_flags_status ON ai_content_flags(status);
+CREATE INDEX IF NOT EXISTS idx_content_flags_content ON ai_content_flags(content_type, content_id);
 CREATE INDEX IF NOT EXISTS idx_cumulative_quiz_event ON ai_cumulative_quizzes(event_id);
 CREATE INDEX IF NOT EXISTS idx_cumulative_quiz_series ON ai_cumulative_quizzes(series_id);
 CREATE INDEX IF NOT EXISTS idx_cumulative_quiz_language ON ai_cumulative_quizzes(language);
