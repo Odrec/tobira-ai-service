@@ -36,3 +36,6 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Archive folder (development scripts and docs kept for reference)
+.archive/
